@@ -21,4 +21,20 @@
 1. git push heroku master
 1. heroku run rake db:migrate
 1. heroku run rake db:seed_fu
+```
+
+### Run
+
+1. heroku ps:scale sidekiq=1 clockwork=1
 1. heroku open
+1. Login/register as initial user
+
+### Configure
+
+```console
+$ heroku run console
+> u = User.first
+> u.admin = true
+> u.approved = true
+> u.save
+> SiteSetting.create(:name => 'force_hostname', :data_type =>1, :value=>'discourse-test.herokuapp.com')
