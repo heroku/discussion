@@ -363,7 +363,7 @@ en:
       resend_activation_email: "Click here to send the activation email again."
       sent_activation_email_again: "We sent another activation email to you at <b>{{currentEmail}}</b>. It might take a few minutes for it to arrive; be sure to check your spam folder."
       heroku:
-        title: "with your Heroku account"
+        title: "with Heroku"
         message: "Authenticating with Heroku (make sure pop up blockers are not enabled)"
       google:
         title: "with Google"
