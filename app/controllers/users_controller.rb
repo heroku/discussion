@@ -360,6 +360,15 @@ class UsersController < ApplicationController
     end
 
     def create_third_party_auth_records(user, auth)
+
+      if heroku_auth?(auth)
+        HerokuUserInfo.create(
+          user_id: user.id,
+          screen_name: auth[:heroku_screen_name],
+          heroku_user_id: auth[:heroku_user_id]
+        )
+      end
+
       if twitter_auth?(auth)
         TwitterUserInfo.create(
           user_id: user.id,
@@ -379,6 +388,11 @@ class UsersController < ApplicationController
           github_user_id: auth[:github_user_id]
         )
       end
+    end
+
+    def heroku_auth?(auth)
+      auth[:heroku_user_id] && auth[:heroku_screen_name] &&
+      HerokuUserInfo.find_by_heroku_user_id(auth[:heroku_user_id]).nil?
     end
 
     def twitter_auth?(auth)

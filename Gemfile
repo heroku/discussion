@@ -49,6 +49,7 @@ gem 'omniauth-twitter'
 gem 'omniauth-github'
 gem 'omniauth-browserid', git: 'https://github.com/callahad/omniauth-browserid.git', branch: 'observer_api'
 gem 'omniauth-cas'
+gem 'omniauth-heroku'
 gem 'oj'
 gem 'pg'
 # we had pain with the 3.2.13 upgrade so monkey patch the security fix

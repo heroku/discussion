@@ -362,6 +362,9 @@ en:
       not_activated: "You can't log in yet. We previously sent an activation email to you at <b>{{sentTo}}</b>. Please follow the instructions in that email to activate your account."
       resend_activation_email: "Click here to send the activation email again."
       sent_activation_email_again: "We sent another activation email to you at <b>{{currentEmail}}</b>. It might take a few minutes for it to arrive; be sure to check your spam folder."
+      heroku:
+        title: "with Heroku"
+        message: "Authenticating with Heroku (make sure pop up blockers are not enabled)"
       google:
         title: "with Google"
         message: "Authenticating with Google (make sure pop up blockers are not enabled)"

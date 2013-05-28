@@ -20,6 +20,13 @@ Rails.application.config.middleware.use OmniAuth::Builder do
 
   # lambda is required for proper multisite support, 
   #  without it subdomains will not function correctly 
+  provider :heroku,
+           :setup => lambda { |env|
+              strategy = env['omniauth.strategy']
+              strategy.options[:client_id] = SiteSetting.heroku_client_id
+              strategy.options[:client_secret] = SiteSetting.heroku_client_secret
+           }
+
   provider :facebook,
            :setup => lambda { |env|
               strategy = env['omniauth.strategy']

@@ -1,6 +1,9 @@
 <div class="modal-body">
   {{#if hasAtLeastOneLoginButton}}
     <div id="login-buttons">
+      {{#if Discourse.SiteSettings.enable_heroku_logins}}
+        <button class="btn btn-social heroku" title="{{i18n login.heroku.title}}" {{action "herokuLogin" target="view"}}>{{i18n login.heroku.title}}</button>
+      {{/if}}
       {{#if Discourse.SiteSettings.enable_google_logins}}
         <button class="btn btn-social google" title="{{i18n login.google.title}}" {{action openidLogin "google"}}>{{i18n login.google.title}}</button>
       {{/if}}

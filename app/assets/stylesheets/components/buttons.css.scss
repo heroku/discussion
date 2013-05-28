@@ -144,6 +144,9 @@
     font-family: zocial;
     line-height: 0.9;
   }
+  &.heroku {
+    background: $heroku;
+  }
   &.google {
     background: $google;
     &:before {

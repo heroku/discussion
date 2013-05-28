@@ -1,4 +1,11 @@
 GIT
+  remote: git://github.com/rails-api/active_model_serializers.git
+  revision: 8795f2bc1eccf4c4a26ce8853af0a2e58fedd45a
+  specs:
+    active_model_serializers (0.8.1)
+      activemodel (>= 3.0)
+
+GIT
   remote: https://github.com/CodeMonkeySteve/fast_xor.git
   revision: 85b79ec6d116f9680f23bd2c5c8c2c2039d477d8
   specs:
@@ -58,13 +65,6 @@ GIT
   revision: 67408dfb1b99fb8d5f145f782b9e22d1851a8e5a
   specs:
     email_reply_parser (0.6)
-
-GIT
-  remote: https://github.com/rails-api/active_model_serializers.git
-  revision: fe84e0ad5268f1439123fd9a1f9fd12e25a54cd3
-  specs:
-    active_model_serializers (0.8.1)
-      activemodel (>= 3.0)
 
 GIT
   remote: https://github.com/zhangyuan/vestal_versions
@@ -275,6 +275,9 @@ GEM
     omniauth-github (1.1.0)
       omniauth (~> 1.0)
       omniauth-oauth2 (~> 1.1)
+    omniauth-heroku (0.1.1)
+      omniauth (~> 1.0)
+      omniauth-oauth2 (~> 1.0)
     omniauth-oauth (1.0.1)
       oauth
       omniauth (~> 1.0)
@@ -513,6 +516,7 @@ DEPENDENCIES
   omniauth-cas
   omniauth-facebook
   omniauth-github
+  omniauth-heroku
   omniauth-openid
   omniauth-twitter
   openid-redis-store
