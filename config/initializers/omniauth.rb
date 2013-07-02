@@ -4,6 +4,8 @@ require 'openid_redis_store'
 # if you need to test this and are having ssl issues see:
 #  http://stackoverflow.com/questions/6756460/openssl-error-using-omniauth-specified-ssl-path-but-didnt-work
 
+OpenSSL::SSL::VERIFY_PEER = OpenSSL::SSL::VERIFY_NONE unless Rails.env.production?
+
 Rails.application.config.middleware.use OmniAuth::Builder do
 
   provider :open_id,
@@ -18,8 +20,8 @@ Rails.application.config.middleware.use OmniAuth::Builder do
            :identifier => 'https://me.yahoo.com',
            :require => 'omniauth-openid'
 
-  # lambda is required for proper multisite support, 
-  #  without it subdomains will not function correctly 
+  # lambda is required for proper multisite support,
+  #  without it subdomains will not function correctly
   provider :heroku,
            :setup => lambda { |env|
               strategy = env['omniauth.strategy']
