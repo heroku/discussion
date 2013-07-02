@@ -21,7 +21,7 @@ class Users::OmniauthCallbacksController < ApplicationController
   def complete
 
     # Make sure we support that provider
-    provider = params[:provider]    
+    provider = params[:provider]
     raise Discourse::InvalidAccess.new unless self.class.types.keys.map(&:to_s).include?(provider)
 
     # Check if the provider is enabled
@@ -41,51 +41,6 @@ class Users::OmniauthCallbacksController < ApplicationController
   def failure
     flash[:error] = I18n.t("login.omniauth_error", strategy: params[:strategy].titleize)
     render layout: 'no_js'
-  end
-
-  def create_or_sign_on_user_using_heroku(auth_token)
-
-    heroku_api_token = auth_token['credentials']['token']
-    user = MultiJson.decode(
-      Faraday.new(ENV["HEROKU_API_URL"] || "https://api.heroku.com/").get('/account') do |r|
-        r.headers['Accept'] = 'application/json'
-        r.headers['Authorization'] = "Bearer #{heroku_api_token}"
-      end.body)
-
-    screen_name = user['email'].split('@').first
-    heroku_user_id = user['id'].to_i
-
-    session[:authentication] = {
-      heroku_user_id: heroku_user_id,
-      heroku_screen_name: screen_name
-    }
-
-    user_info = HerokuUserInfo.where(heroku_user_id: heroku_user_id).first
-
-    @data = {
-      email: user['email'],
-      username: screen_name,
-      auth_provider: "Heroku"
-    }
-
-    if user_info
-      if user_info.user.active
-
-        if Guardian.new(user_info.user).can_access_forum?
-          log_on_user(user_info.user)
-          @data[:authenticated] = true
-        else
-          @data[:awaiting_approval] = true
-        end
-
-      else
-        @data[:awaiting_activation] = true
-        # send another email ?
-      end
-    else
-      @data[:name] = screen_name
-    end
-
   end
 
   def create_or_sign_on_user_using_twitter(auth_token)

@@ -32,7 +32,7 @@
           {{#if currentUser}}
           <span class='username'><a {{bindAttr href="currentUser.path"}}>{{currentUser.name}}</a></span>
           {{else}}
-            <button {{action showLogin}} class='btn btn-primary btn-small'>{{i18n log_in}}</button>
+            <button onclick="document.location.href='/heroku-login'" class='btn btn-primary btn-small'>{{i18n log_in}}</button>
           {{/if}}
         </div>
       {{/unless}}
