@@ -25,8 +25,8 @@ Rails.application.config.middleware.use OmniAuth::Builder do
   provider :heroku,
            :setup => lambda { |env|
               strategy = env['omniauth.strategy']
-              strategy.options[:client_id] = SiteSetting.heroku_client_id
-              strategy.options[:client_secret] = SiteSetting.heroku_client_secret
+              strategy.options[:client_id] = ENV['HEROKU_OAUTH_ID']
+              strategy.options[:client_secret] = ENV['HEROKU_OAUTH_SECRET']
            }
 
   provider :facebook,
