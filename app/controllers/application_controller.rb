@@ -14,6 +14,7 @@ class ApplicationController < ActionController::Base
 
   protect_from_forgery
 
+  before_filter :sync_heroku_session, if: lambda{ |c| Rails.env.production? && request.format && request.format.html? }
   before_filter :inject_preview_style
   before_filter :block_if_maintenance_mode
   before_filter :authorize_mini_profiler
@@ -187,6 +188,18 @@ class ApplicationController < ActionController::Base
     guardian.ensure_can_see!(user)
     user
   end
+
+
+  # Heroku session
+
+  def sync_heroku_session
+    heroku_session.sync
+  end
+
+  def heroku_session
+    @heroku_session ||= HerokuSession.new(self)
+  end
+
 
   private
 
