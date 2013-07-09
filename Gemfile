@@ -153,6 +153,7 @@ gem 'rack-cors', require: false
 gem 'unicorn', require: false
 
 gem 'newrelic_rpm'
+gem 'honeybadger'
 
 # perftools only works on 1.9 atm
 group :profile do
