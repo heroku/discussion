@@ -1,22 +1,23 @@
 class HerokuSession
 
-	attr_reader :controller, :cookies, :session, :logged_in_forum, :logged_in_heroku
+  attr_reader :controller, :cookies, :session, :logged_in_forum, :logged_in_heroku
 
-	def initialize(controller)
-		@controller = controller
-		@cookies = controller.send :cookies
-		@session = controller.session
-		@logged_in_forum = !!controller.current_user
-		@logged_in_heroku = cookies[:heroku_session].present?
-	end
+  def initialize(controller)
+    @controller = controller
+    @cookies = controller.send :cookies
+    @session = controller.session
+    @logged_in_forum = !!controller.current_user
+    @logged_in_heroku = cookies[:heroku_session].present?
+  end
 
-	def sync
-		if logged_in_forum && !logged_in_heroku
-			destroy
-		elsif logged_in_as_different_user? || (!logged_in_forum && logged_in_heroku)
-			dance_oauth
-		end
-	end
+  def sync
+    if logged_in_forum && !logged_in_heroku
+      destroy
+      controller.redirect_to controller.request.path
+    elsif logged_in_as_different_user? || (!logged_in_forum && logged_in_heroku)
+      dance_oauth
+    end
+  end
 
   def create(oauth_token)
     user_info = HerokuUserInfo.find_or_create_from_oauth_token(oauth_token)
@@ -52,7 +53,7 @@ class HerokuSession
     cookies.delete(:forums_session_nonce)
     cookies.delete('heroku_session', :domain => heroku_cookies_domain)
     cookies.delete('heroku_session_nonce', :domain => heroku_cookies_domain)
-    cookies[:_t] = nil
+    cookies.delete(:_t)
   end
 
   def heroku_cookies_domain

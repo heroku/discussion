@@ -1,5 +1,6 @@
 class HerokuSessionController < ApplicationController
 
+  skip_before_filter :verify_authenticity_token
   skip_before_filter :sync_heroku_session
   skip_before_filter :check_xhr
 
@@ -16,7 +17,8 @@ class HerokuSessionController < ApplicationController
 
   def destroy
     heroku_session.destroy
-    redirect_to request.referrer
+    next_url = request.referrer || root_url
+    redirect_to "https://id.heroku.com/logout?url=#{next_url}"
   end
 
 end

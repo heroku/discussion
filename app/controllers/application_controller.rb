@@ -197,7 +197,7 @@ class ApplicationController < ActionController::Base
   end
 
   def heroku_session
-    @heroku_session ||= HerokuSession.new(self)
+    HerokuSession.new(self)
   end
 
 
