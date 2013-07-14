@@ -47,12 +47,12 @@
               <a href='#' class='badge-notification unread-private-messages'>{{currentUser.unread_private_messages}}</a>
             {{/if}}
           {{else}}
-            <a class='icon' href="#" {{action showLogin}} title='{{i18n notifications.title}}'><i class='icon-comment'></i></a>
+            <a class='icon' href="/heroku-login" title='{{i18n notifications.title}}'><i class='icon-comment'></i></a>
           {{/if}}
         </li>
         <li>
           {{#if Discourse.loginRequired}}
-            <a class='icon expand' href='#' {{action showLogin}}>
+            <a class='icon expand' href='/heroku-login'>
               <i class='icon-search'></i>
             </a>
           {{else}}
@@ -67,8 +67,7 @@
         <li class='categories dropdown'>
           {{#if Discourse.loginRequired}}
             <a class='icon'
-               href="#"
-               {{action showLogin}}>
+               href="/heroku-login">
                <i class='icon-reorder'></i>
             </a>
           {{else}}
