@@ -10,7 +10,7 @@ Discourse.ApplicationRoute = Em.Route.extend({
 
   events: {
     showLogin: function() {
-      Discourse.Route.showModal(this, 'login');
+      document.location.href='/heroku-login';
     },
 
     showCreateAccount: function() {
