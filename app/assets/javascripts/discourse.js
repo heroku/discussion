@@ -195,7 +195,7 @@ Discourse = Ember.Application.createWithMixins({
     Discourse.User.logout().then(function() {
       // Reloading will refresh unbound properties
       Discourse.KeyValueStore.abandonLocal();
-      window.location.reload();
+      document.location.href='/heroku-logout';
     });
   },
 
