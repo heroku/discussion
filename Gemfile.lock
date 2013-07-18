@@ -467,6 +467,8 @@ GEM
       kgio (~> 2.6)
       rack
       raindrops (~> 0.7)
+    unicorn-worker-killer (0.4.1)
+      unicorn (~> 4)
 
 PLATFORMS
   ruby
@@ -565,4 +567,5 @@ DEPENDENCIES
   turbo-sprockets-rails3
   uglifier
   unicorn
+  unicorn-worker-killer
   vestal_versions!
