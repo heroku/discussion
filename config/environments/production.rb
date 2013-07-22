@@ -11,6 +11,7 @@ Discourse::Application.configure do
   config.action_controller.perform_caching = true
 
   config.serve_static_assets = true
+  config.static_cache_control = "public, max-age=2592000"
 
   # Compress JavaScripts and CSS
   config.assets.compress = true
@@ -66,5 +67,6 @@ Discourse::Application.configure do
   # Discourse strongly recommend you use a CDN.
   # For origin pull cdns all you need to do is register an account and configure
   # config.action_controller.asset_host = "http://YOUR_CDN_HERE"
+  config.action_controller.asset_host = ENV['CDN_SUMO_URL']
 
 end
