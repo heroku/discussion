@@ -43,5 +43,7 @@ Discourse::Application.configure do
 
   require 'middleware/turbo_dev'
   config.middleware.insert 0, Middleware::TurboDev
+
+  config.enable_rack_cors = false
 end
 
