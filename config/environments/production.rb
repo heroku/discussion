@@ -62,7 +62,7 @@ Discourse::Application.configure do
   #
   # Set in config/application.rb
   # config.enable_rack_cors = true
-  # config.rack_cors_origins = [ENV['HOST_NAME']]
+  # config.rack_cors_origins = [ENV['HOSTNAME']]
   # config.rack_cors_resource = ['/assets/*', { :headers => :any, :methods => [:get, :head, :options] }]
 
   # Discourse strongly recommend you use a CDN.
@@ -70,4 +70,5 @@ Discourse::Application.configure do
   # config.action_controller.asset_host = "http://YOUR_CDN_HERE"
   config.action_controller.asset_host = ENV['CDN_SUMO_URL']
 
+  config.font_assets.origin = ENV['HOSTNAME'] || "https://discussion.heroku.com"
 end

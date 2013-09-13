@@ -152,6 +152,7 @@ gem 'rack-cache', require: false
 gem 'rack-cors', require: false
 gem 'unicorn', require: false
 gem 'unicorn-worker-killer'
+gem 'font_assets'
 
 gem 'newrelic_rpm'
 gem 'honeybadger'
