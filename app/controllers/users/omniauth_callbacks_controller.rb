@@ -12,7 +12,8 @@ class Users::OmniauthCallbacksController < ApplicationController
     Auth::GithubAuthenticator.new,
     Auth::TwitterAuthenticator.new,
     Auth::PersonaAuthenticator.new,
-    Auth::CasAuthenticator.new
+    Auth::CasAuthenticator.new,
+    Auth::HerokuAuthenticator.new # Should try and use plugin interface instead (?)
   ]
 
   skip_before_filter :redirect_to_login_if_required
