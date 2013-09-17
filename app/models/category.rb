@@ -1,9 +1,17 @@
 class Category < ActiveRecord::Base
   belongs_to :topic, dependent: :destroy
-  belongs_to :topic_only_relative_url,
+  if rails4?
+    belongs_to :topic_only_relative_url,
+    -> { select "id, title, slug" },
+    class_name: "Topic",
+    foreign_key: "topic_id"
+  else
+    belongs_to :topic_only_relative_url,
     select: "id, title, slug",
     class_name: "Topic",
     foreign_key: "topic_id"
+  end
+
   belongs_to :user
 
   has_many :topics
@@ -35,9 +43,9 @@ class Category < ActiveRecord::Base
   scope :secured, ->(guardian = nil) {
     ids = guardian.secure_category_ids if guardian
     if ids.present?
-      where("NOT categories.read_restricted or categories.id in (:cats)", cats: ids)
+      where("NOT categories.read_restricted or categories.id in (:cats)", cats: ids).references(:categories)
     else
-      where("NOT categories.read_restricted")
+      where("NOT categories.read_restricted").references(:categories)
     end
   }
 
@@ -57,7 +65,7 @@ class Category < ActiveRecord::Base
 
   def self.scoped_to_permissions(guardian, permission_types)
     if guardian && guardian.is_staff?
-      scoped
+      rails4? ? all : scoped
     else
       permission_types = permission_types.map{ |permission_type|
         CategoryGroup.permission_types[permission_type]
@@ -121,6 +129,7 @@ class Category < ActiveRecord::Base
 
   def ensure_slug
     if name.present?
+      self.name.strip!
       self.slug = Slug.for(name)
 
       return if self.slug.blank?
@@ -140,7 +149,7 @@ class Category < ActiveRecord::Base
   end
 
   def publish_categories_list
-    MessageBus.publish('/categories', {categories: ActiveModel::ArraySerializer.new(Category.latest.all).as_json})
+    MessageBus.publish('/categories', {categories: ActiveModel::ArraySerializer.new(Category.latest).as_json})
   end
 
   def uncategorized_validator

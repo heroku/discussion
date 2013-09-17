@@ -1,10 +1,11 @@
 require_dependency 'post_creator'
 require_dependency 'post_destroyer'
+require_dependency 'distributed_memoizer'
 
 class PostsController < ApplicationController
 
   # Need to be logged in for all actions here
-  before_filter :ensure_logged_in, except: [:show, :replies, :by_number, :short_link, :versions]
+  before_filter :ensure_logged_in, except: [:show, :replies, :by_number, :short_link, :versions, :reply_history]
 
   skip_before_filter :store_incoming_links, only: [:short_link]
   skip_before_filter :check_xhr, only: [:markdown,:short_link]
@@ -25,21 +26,36 @@ class PostsController < ApplicationController
   end
 
   def create
-    post_creator = PostCreator.new(current_user, create_params)
-    post = post_creator.create
-    if post_creator.errors.present?
+    params = create_params
 
-      # If the post was spam, flag all the user's posts as spam
-      current_user.flag_linked_posts_as_spam if post_creator.spam?
+    key = params_key(params)
 
-      render_json_error(post_creator)
-    else
-      post_serializer = PostSerializer.new(post, scope: guardian, root: false)
-      post_serializer.topic_slug = post.topic.slug if post.topic.present?
-      post_serializer.draft_sequence = DraftSequence.current(current_user, post.topic.draft_key)
-      render_json_dump(post_serializer)
+    result = DistributedMemoizer.memoize(key, 120) do
+      post_creator = PostCreator.new(current_user, params)
+      post = post_creator.create
+      if post_creator.errors.present?
+
+        # If the post was spam, flag all the user's posts as spam
+        current_user.flag_linked_posts_as_spam if post_creator.spam?
+
+        "e" << MultiJson.dump(errors: post_creator.errors.full_messages)
+      else
+        post_serializer = PostSerializer.new(post, scope: guardian, root: false)
+        post_serializer.topic_slug = post.topic.slug if post.topic.present?
+        post_serializer.draft_sequence = DraftSequence.current(current_user, post.topic.draft_key)
+        "s" << MultiJson.dump(post_serializer)
+      end
     end
 
+
+    payload = result[1..-1]
+    if result[0] == "e"
+      # don't memoize errors
+      $redis.del(DistributedMemoizer.redis_key(key))
+      render json: payload, status: 422
+    else
+      render json: payload
+    end
   end
 
   def update
@@ -94,17 +110,20 @@ class PostsController < ApplicationController
     @post = Post.where(topic_id: params[:topic_id], post_number: params[:post_number]).first
     guardian.ensure_can_see!(@post)
     @post.revert_to(params[:version].to_i) if params[:version].present?
-    post_serializer = PostSerializer.new(@post, scope: guardian, root: false)
-    post_serializer.add_raw = true
-    render_json_dump(post_serializer)
+    render_post_json(@post)
+  end
+
+  def reply_history
+    @post = Post.where(id: params[:id]).first
+    guardian.ensure_can_see!(@post)
+
+    render_serialized(@post.reply_history, PostSerializer)
   end
 
   def show
     @post = find_post_from_params
     @post.revert_to(params[:version].to_i) if params[:version].present?
-    post_serializer = PostSerializer.new(@post, scope: guardian, root: false)
-    post_serializer.add_raw = true
-    render_json_dump(post_serializer)
+    render_post_json(@post)
   end
 
   def destroy
@@ -120,26 +139,27 @@ class PostsController < ApplicationController
   def recover
     post = find_post_from_params
     guardian.ensure_can_recover_post!(post)
-    post.recover!
-    post.topic.update_statistics
+    destroyer = PostDestroyer.new(current_user, post)
+    destroyer.recover
+    post.reload
 
-    render nothing: true
+    render_post_json(post)
   end
 
   def destroy_many
 
     params.require(:post_ids)
 
-    posts = Post.where(id: params[:post_ids])
+    posts = Post.where(id: post_ids_including_replies)
     raise Discourse::InvalidParameters.new(:post_ids) if posts.blank?
 
     # Make sure we can delete the posts
+
     posts.each {|p| guardian.ensure_can_delete!(p) }
 
     Post.transaction do
       topic_id = posts.first.topic_id
-      posts.each {|p| p.destroy }
-      Topic.reset_highest(topic_id)
+      posts.each {|p| PostDestroyer.new(current_user, p).destroy }
     end
 
     render nothing: true
@@ -155,11 +175,6 @@ class PostsController < ApplicationController
   def replies
     post = find_post_from_params
     render_serialized(post.replies, PostSerializer)
-  end
-
-  # Returns the "you're creating a post education"
-  def education_text
-
   end
 
   def bookmark
@@ -188,7 +203,22 @@ class PostsController < ApplicationController
       post
     end
 
+  def render_post_json(post)
+    post_serializer = PostSerializer.new(post, scope: guardian, root: false)
+    post_serializer.add_raw = true
+    render_json_dump(post_serializer)
+  end
+
   private
+
+    def params_key(params)
+      "post##" << Digest::SHA1.hexdigest(params
+        .to_a
+        .concat([["user", current_user.id]])
+        .sort{|x,y| x[0] <=> y[0]}.join do |x,y|
+          "#{x}:#{y}"
+        end)
+    end
 
     def create_params
       permitted = [
@@ -200,8 +230,12 @@ class PostsController < ApplicationController
         :target_usernames,
         :reply_to_post_number,
         :image_sizes,
-        :auto_close_days
+        :auto_close_days,
+        :auto_track
       ]
+
+      # param munging for WordPress
+      params[:auto_track] = !(params[:auto_track].to_s == "false") if params[:auto_track]
 
       if api_key_valid?
         # php seems to be sending this incorrectly, don't fight with it

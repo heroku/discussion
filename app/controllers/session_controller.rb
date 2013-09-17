@@ -1,15 +1,16 @@
 class SessionController < ApplicationController
-  # we need to allow account login with bad CSRF tokens, if people are caching, the CSRF token on the
-  #  page is going to be empty, this means that server will see an invalid CSRF and blow the session
-  #  once that happens you can't log in with social
-  skip_before_filter :verify_authenticity_token, only: [:create]
+
   skip_before_filter :redirect_to_login_if_required
+
+  def csrf
+    render json: {csrf: form_authenticity_token }
+  end
 
   def create
     params.require(:login)
     params.require(:password)
 
-    login = params[:login]
+    login = params[:login].strip
     login = login[1..-1] if login[0] == "@"
 
     if login =~ /@/
@@ -21,7 +22,7 @@ class SessionController < ApplicationController
     if @user.present?
 
       # If the site requires user approval and the user is not approved yet
-      if SiteSetting.must_approve_users? && !@user.approved?
+      if SiteSetting.must_approve_users? && !@user.approved? && !@user.admin?
         render json: {error: I18n.t("login.not_approved")}
         return
       end
@@ -66,7 +67,7 @@ class SessionController < ApplicationController
   end
 
   def destroy
-    session[:current_user_id] = nil
+    reset_session
     cookies[:_t] = nil
     render nothing: true
   end

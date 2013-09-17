@@ -1,0 +1,33 @@
+<div class="container">
+  <div class="row">
+    <div class="full-width">
+
+      <ul class="nav nav-pills">
+        <li>{{#linkTo 'admin.dashboard'}}{{i18n admin.dashboard.title}}{{/linkTo}}</li>
+        {{#if currentUser.admin}}
+          <li>{{#linkTo 'admin.site_settings'}}{{i18n admin.site_settings.title}}{{/linkTo}}</li>
+          <li>{{#linkTo 'adminSiteContents'}}{{i18n admin.site_content.title}}{{/linkTo}}</li>
+        {{/if}}
+        <li>{{#linkTo 'adminUsersList'}}{{i18n admin.users.title}}{{/linkTo}}</li>
+        {{#if currentUser.admin}}
+          <li>{{#linkTo 'admin.groups'}}{{i18n admin.groups.title}}{{/linkTo}}</li>
+        {{/if}}
+        <li>{{#linkTo 'adminEmail'}}{{i18n admin.email.title}}{{/linkTo}}</li>
+        <li>{{#linkTo 'adminFlags'}}{{i18n admin.flags.title}}{{/linkTo}}</li>
+        <li>{{#linkTo 'adminLogs'}}{{i18n admin.logs.title}}{{/linkTo}}</li>
+        {{#if currentUser.admin}}
+          <li>{{#linkTo 'admin.customize'}}{{i18n admin.customize.title}}{{/linkTo}}</li>
+          <li>{{#linkTo 'admin.api'}}{{i18n admin.api.title}}{{/linkTo}}</li>
+        {{/if}}
+      </ul>
+
+      <div class='boxed white admin-content'>
+        <div class='admin-contents'>
+          {{outlet}}
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+

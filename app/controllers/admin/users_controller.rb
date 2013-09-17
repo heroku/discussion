@@ -72,7 +72,7 @@ class Admin::UsersController < Admin::AdminController
 
   def trust_level
     guardian.ensure_can_change_trust_level!(@user)
-    logger = AdminLogger.new(current_user)
+    logger = StaffActionLogger.new(current_user)
     BoostTrustLevel.new(user: @user, level: params[:level], logger: logger).save!
     render_serialized(@user, AdminUserSerializer)
   end
@@ -114,13 +114,26 @@ class Admin::UsersController < Admin::AdminController
     render nothing: true
   end
 
+  def reject_bulk
+    d = UserDestroyer.new(current_user)
+    success_count = 0
+    User.where(id: params[:users]).each do |u|
+      success_count += 1 if guardian.can_delete_user?(u) and d.destroy(u, params.slice(:context)) rescue UserDestroyer::PostsExistError
+    end
+    render json: {success: success_count, failed: (params[:users].try(:size) || 0) - success_count}
+  end
+
   def destroy
     user = User.where(id: params[:id]).first
     guardian.ensure_can_delete_user!(user)
-    if UserDestroyer.new(current_user).destroy(user)
-      render json: {deleted: true}
-    else
-      render json: {deleted: false, user: AdminDetailedUserSerializer.new(user, root: false).as_json}
+    begin
+      if UserDestroyer.new(current_user).destroy(user, params.slice(:delete_posts, :block_email, :block_urls, :context))
+        render json: {deleted: true}
+      else
+        render json: {deleted: false, user: AdminDetailedUserSerializer.new(user, root: false).as_json}
+      end
+    rescue UserDestroyer::PostsExistError
+      raise Discourse::InvalidAccess.new("User #{user.username} has #{user.post_count} posts, so can't be deleted.")
     end
   end
 

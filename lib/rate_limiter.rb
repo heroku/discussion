@@ -1,0 +1,68 @@
+require_dependency 'rate_limiter/limit_exceeded'
+require_dependency 'rate_limiter/on_create_record'
+
+# A redis backed rate limiter.
+class RateLimiter
+
+  # We don't observe rate limits in test mode
+  def self.disabled?
+    Rails.env.test?
+  end
+
+  def initialize(user, key, max, secs)
+    @user = user
+    @key = "l-rate-limit:#{@user.id}:#{key}"
+    @max = max
+    @secs = secs
+  end
+
+  def clear!
+    $redis.del(@key)
+  end
+
+  def can_perform?
+    rate_unlimited? || is_under_limit?
+  end
+
+  def performed!
+    return if rate_unlimited?
+
+    if is_under_limit?
+      # simple ring buffer.
+      $redis.lpush(@key, Time.now.to_i)
+      $redis.ltrim(@key, 0, @max - 1)
+
+      # let's ensure we expire this key at some point, otherwise we have leaks
+      $redis.expire(@key, @secs * 2)
+    else
+      raise LimitExceeded.new(seconds_to_wait)
+    end
+  end
+
+  def rollback!
+    return if RateLimiter.disabled?
+    $redis.lpop(@key)
+  end
+
+  private
+
+  def seconds_to_wait
+    @secs - age_of_oldest
+  end
+
+  def age_of_oldest
+    # age of oldest event in buffer, in seconds
+    Time.now.to_i - $redis.lrange(@key, -1, -1).first.to_i
+  end
+
+  def is_under_limit?
+      # number of events in buffer less than max allowed? OR
+      ($redis.llen(@key) < @max) ||
+      # age bigger than silding window size?
+      (age_of_oldest > @secs)
+  end
+
+  def rate_unlimited?
+    !!(RateLimiter.disabled? || @user.staff?)
+  end
+end

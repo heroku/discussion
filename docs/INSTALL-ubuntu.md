@@ -1,13 +1,18 @@
-# Discourse Install Guide on Ubuntu
+# Official Discourse Install Guide
 
-## What kind of hardware do you have?
+## Recommended Server Hardware
 
-- We *strongly* recommend 2GB of memory minimum if you don't want to deal with swap partitions during the install.
-- We recommend at least a dual core CPU.
+- 2 GB of RAM
+- 2 GB of swap
+- 2 processor cores
 
-You can get away with less than this if you are careful -- 1 GB of memory and a single core CPU are the minimums -- but it's simpler to just throw a bit more hardware at the problem.
+With 2 GB of memory and dual cores, you can run two instances of the thin server (`NUM_WEBS=2`), and easily host anything but the largest of forums.
+
+1 GB of memory, 3 GB of swap and a single core CPU are the minimums for a steady state, running Discourse forum &ndash; but it's simpler to just throw a bit more hardware at the problem if you can, particularly during the install.
 
 ## Install Ubuntu Server 12.04 LTS with the package groups:
+
+Yes, you can in theory pick the distro of your choice, but to keep this guide sane, we're picking one, and it's Ubuntu. Feel free to substitute the distro of your choice, the steps are mostly the same.
 
 ![screenshot of package group selection screen](https://raw.github.com/discourse/discourse-docimages/master/install/ubuntu%20-%20install%20-%20software%20selection.png)
 
@@ -43,9 +48,28 @@ If you have a mail server responsible for handling the egress of email from your
 Install necessary packages:
 
     # Run these commands as your normal login (e.g. "michael")
-    sudo apt-get -y install build-essential libssl-dev libyaml-dev git libtool libxslt-dev libxml2-dev redis-server libpq-dev gawk curl pngcrush
+    sudo apt-get -y install build-essential libssl-dev libyaml-dev git libtool libxslt-dev libxml2-dev libpq-dev gawk curl pngcrush imagemagick python-software-properties
 
-## Web Server Option: nginx
+    # If you're on Ubuntu >= 12.10, change:
+    # python-software-properties to software-properties-common
+
+## Caching: Redis
+
+Redis is a networked, in memory key-value store cache. Without the Redis caching layer, we'd have to go to the database a lot more often for common information and the site would be slower as a result.
+
+Be sure to install the latest stable Redis, as the package in the distro may be a bit old:
+
+    sudo apt-add-repository -y ppa:rwky/redis
+    sudo apt-get update
+    sudo apt-get install redis-server
+
+## Web Server: nginx
+
+nginx is used for:
+
+* reverse proxy (i.e. load balancer)
+* static asset serving (since you don't want to do that from ruby)
+* anonymous user cache
 
 At Discourse, we recommend the latest version of nginx (we like the new and
 shiny). To install on Ubuntu:
@@ -67,98 +91,26 @@ shiny). To install on Ubuntu:
     # install nginx
     sudo apt-get update && sudo apt-get -y install nginx
 
-## Web Server Option: apache2
-
-If you instead want to use apache2 to serve the static pages:
-    
-    # Run these commands as your normal login (e.g. "michael")
-    # If you don't have apache2 yet
-    sudo apt-get install apache2
-    
-    # Edit your site details in a new apache2 config file
-    sudo vim /etc/apache2/sites-available/your-domain.com
-    
-    # Put these info inside and change accordingly
-    
-    <VirtualHost *:80>
-      ServerName your-domain.com
-      ServerAlias www.your-domain.com
-    
-      DocumentRoot /srv/www/apps/discourse/public
-    
-      <Directory /srv/www/apps/discourse/public>
-        AllowOverride all
-        Options -MultiViews
-      </Directory>
-    
-      # Custom log file locations
-      ErrorLog  /srv/www/apps/discourse/log/error.log
-      CustomLog /srv/www/apps/discourse/access.log combined
-    </VirtualHost>
-    
-    # Install the Passenger Phusion gem and run the install
-    gem install passenger
-    passenger-install-apache2-module
-    
-    # Next, we "create" a new apache2 module, passenger
-    sudo vim /etc/apache2/mods-available/passenger.load
-    
-    # Inside paste (change the user accodingly)
-    LoadModule passenger_module /home/YOUR-USER/.rvm/gems/ruby-2.0.0-p0/gems/passenger-4.0.2/libout/apache2/mod_passenger.so
-
-    # Now the passenger module configuration
-    sudo vim /etc/apache2/mods-available/passenger.conf
-    
-    # Inside, paste (change the user accodingly)
-    PassengerRoot /home/YOUR-USER/.rvm/gems/ruby-2.0.0-p0/gems/passenger-4.0.2
-    PassengerDefaultRuby /home/YOUR-USER/.rvm/wrappers/ruby-2.0.0-p0/ruby
-    
-    # Now activate them all
-    
-    sudo a2ensite your-domain.com
-    sudo a2enmod passenger
-    sudo service apache2 reload
-    sudo service apache2 restart
-
-If you get any errors starting or reloading apache, please check the paths above - Ruby 2.0 should be there if you are using RVM, but it could get tricky.
-
 ## Install Ruby with RVM
 
-### RVM Option: Systemwide installation
+### RVM : Single-user installation
 
-Taken from http://rvm.io/, the commands below installs RVM and users in the 'rvm' group have access to modify state:
-
-    # Run these commands as your normal login (e.g. "michael")
-    \curl -s -S -L https://get.rvm.io | sudo bash -s stable
-    sudo adduser $USER rvm
-    newgrp rvm
-    . /etc/profile.d/rvm.sh
-    rvm requirements
-
-    # Build and install ruby
-    rvm install 2.0.0
-    gem install bundler
-
-### RVM Option: Single-user installation
-
-Another sensible option (especially if only one Ruby app is on the machine) is
-to install RVM isolated to a user's environment. Further instructions are
-below.
+We recommend installing RVM isolated to a single user's environment.
 
 ## Discourse setup
 
 Create Discourse user:
 
     # Run these commands as your normal login (e.g. "michael")
-    sudo adduser --shell /bin/bash discourse
-    # If this fails, it's because you're doing the RVM single-user install.
-    # In that case, you could just not run it if errors make you squirrely
-    sudo adduser discourse rvm
+    sudo adduser --shell /bin/bash --gecos 'Discourse application' discourse
+    sudo install -d -m 755 -o discourse -g discourse /var/www/discourse
 
 Give Postgres database rights to the `discourse` user:
 
     # Run these commands as your normal login (e.g. "michael")
     sudo -u postgres createuser -s discourse
+    # If you will be using password authentication on your database, only
+    # necessary if the database will be on a remote host
     sudo -u postgres psql -c "alter user discourse password 'todayisagooddaytovi';"
 
 Change to the 'discourse' user:
@@ -166,7 +118,7 @@ Change to the 'discourse' user:
     # Run this command as your normal login (e.g. "michael"), further commands should be run as 'discourse'
     sudo su - discourse
 
-Install RVM if doing a single-user RVM installation:
+Install RVM
 
     # As 'discourse'
     # Install RVM
@@ -178,8 +130,9 @@ Install RVM if doing a single-user RVM installation:
     cat ~/.bash_profile >> ~/.profile
     rm ~/.bash_profile
 
-    # Install necessary packages for building ruby
-    rvm requirements
+    # Install necessary packages for building ruby (this will only work if
+    # you've given discourse sudo permissions, which is *not* the default)
+    # rvm requirements
 
     # If discourse does not have sudo permissions (likely the case), run:
     rvm --autolibs=read-fail requirements
@@ -190,12 +143,20 @@ Continue with Discourse installation
 
     # Build and install ruby
     rvm install 2.0.0
+
+    # Use installed ruby as default
+    rvm use 2.0.0 --default
+
+    # Install bundler
     gem install bundler
 
-    # Pull down the latest release
-    git clone git://github.com/discourse/discourse.git
-    cd discourse
-    git checkout latest-release
+    # Pull down the latest code
+    git clone git://github.com/discourse/discourse.git /var/www/discourse
+    cd /var/www/discourse
+    git checkout master
+
+    # To run on the most recent numbered release instead of bleeding-edge:
+    #git checkout latest-release
 
     # Install necessary gems
     bundle install --deployment --without test
@@ -205,45 +166,38 @@ _If you have errors building the native extensions, ensure you have sufficient f
 Configure Discourse:
 
     # Run these commands as the discourse user
-    cd ~/discourse/config
+    cd /var/www/discourse/config
     cp database.yml.production-sample database.yml
     cp redis.yml.sample redis.yml
     cp discourse.pill.sample discourse.pill
     cp environments/production.rb.sample environments/production.rb
 
-Edit ~/discourse/config/database.yml
+Edit /var/www/discourse/config/database.yml
 
-- change production db name if appropriate
-- change username/password if appropriate
-- set `db_id` if using multisite
-- change `host_names` to the name you'll use to access the discourse site
+- change production database name if appropriate
+- change database username/password if appropriate
+- if you are hosting multiple Discourse forums on the same server (multisite), set `db_id`
+- change `host_names` to the name you'll use to access the discourse site, e.g. "forum.example.com"
 
-Edit ~/discourse/config/redis.yml
+Edit /var/www/discourse/config/redis.yml
 
 - no changes if this is the only application using redis, but have a look
 
-Edit ~/discourse/config/discourse.pill
+Edit /var/www/discourse/config/discourse.pill
 
 - change application name from 'discourse' if necessary
 - Ensure appropriate Bluepill.application line is uncommented
-- search for "host to run on" and change to current hostname
-- note: clockwork should run on only one host
 
-Edit ~/discourse/config/initializers/secret_token.rb
-
-- uncomment secret_token line
-- replace SET_SECRET_HERE with secret output from 'RAILS_ENV=production rake secret' command in discourse directory
-- delete the lines below as per instructions in the file
-
-Edit ~/discourse/config/environments/production.rb
-- check settings, modify smtp settings if necessary
-- See http://meta.discourse.org/t/all-of-my-internal-users-show-as-coming-from-127-0-0-1/6607 if this will serve "internal" users
+Edit /var/www/discourse/config/environments/production.rb
+- browse througn all the settings
+- be sure to add your mail server SMTP settings so outgoing mail can be sent (we recommend [Mandrill](https://mandrillapp.com))
+- If your users will come from "internal" [private unroutable IPs](https://en.wikipedia.org/wiki/Private_network) like 10.x.x.x or 192.168.x.x please [see this topic](http://meta.discourse.org/t/all-of-my-internal-users-show-as-coming-from-127-0-0-1/6607).
 
 Initialize the database:
 
     # Run these commands as the discourse user
     # The database name here should match the production one in database.yml
-    cd ~/discourse
+    cd /var/www/discourse
     createdb discourse_prod
     RUBY_GC_MALLOC_LIMIT=90000000 RAILS_ENV=production rake db:migrate
     RUBY_GC_MALLOC_LIMIT=90000000 RAILS_ENV=production rake assets:precompile
@@ -251,18 +205,18 @@ Initialize the database:
 Not english? Set the default language as appropriate:
 
     # Run these commands as the discourse user
-    cd ~/discourse
+    cd /var/www/discourse
     RAILS_ENV=production bundle exec rails c
     SiteSetting.default_locale = 'fr'
 
     # Not sure if your locale is supported? Check at the rails console:
     LocaleSiteSetting.values
-     => ["cs", "da", "de", "en", "es", "fr", "id", "it", "nb_NO", "nl", "pseudo", "pt", "ru", "sv", "zh_CN", "zh_TW"] 
+     => ["cs", "da", "de", "en", "es", "fr", "id", "it", "nb_NO", "nl", "pseudo", "pt", "ru", "sv", "zh_CN", "zh_TW"]
 
 ## nginx setup
 
     # Run these commands as your normal login (e.g. "michael")
-    sudo cp ~discourse/discourse/config/nginx.sample.conf /etc/nginx/conf.d/discourse.conf
+    sudo cp /var/www/discourse/config/nginx.sample.conf /etc/nginx/conf.d/discourse.conf
 
 Edit /etc/nginx/nginx.conf:
 
@@ -298,7 +252,7 @@ Configure Bluepill:
 Start Discourse:
 
     # Run these commands as the discourse user
-    RUBY_GC_MALLOC_LIMIT=90000000 RAILS_ROOT=~/discourse RAILS_ENV=production NUM_WEBS=4 bluepill --no-privileged -c ~/.bluepill load ~/discourse/config/discourse.pill
+    RUBY_GC_MALLOC_LIMIT=90000000 RAILS_ROOT=/var/www/discourse RAILS_ENV=production NUM_WEBS=2 bluepill --no-privileged -c ~/.bluepill load /var/www/discourse/config/discourse.pill
 
 Add the Bluepill startup to crontab.
 
@@ -307,30 +261,39 @@ Add the Bluepill startup to crontab.
 
 Add the following lines:
 
-    @reboot RUBY_GC_MALLOC_LIMIT=90000000 RAILS_ROOT=~/discourse RAILS_ENV=production NUM_WEBS=4 /home/discourse/.rvm/bin/bootup_bluepill --no-privileged -c ~/.bluepill load ~/discourse/config/discourse.pill
-
-
-Note: in case of RVM system-wide installation RVM will be located in `/usr/local/rvm` directory instead of `/home/discourse/.rvm`, so update the line above respectively.
+    @reboot RUBY_GC_MALLOC_LIMIT=90000000 RAILS_ROOT=/var/www/discourse RAILS_ENV=production NUM_WEBS=2 /home/discourse/.rvm/bin/bootup_bluepill --no-privileged -c ~/.bluepill load /var/www/discourse/config/discourse.pill
 
 ## Log rotation setup
 
     # Disabled for now - log rotation isn't *quite* complete
-    #0 0 * * * /usr/sbin/logrotate ~/discourse/config/logrotate.conf
+    #0 0 * * * /usr/sbin/logrotate /var/www/discourse/config/logrotate.conf
+
+## Email setup
+
+IMPORTANT: Discourse relies heavily on email. If your email configuration is not correct, you will effectively have a broken forum.
+Please, head over to our [Mail Setup Guide](https://github.com/discourse/discourse/blob/master/docs/INSTALL-email.md) to find out more information on how to properly setup emails.
 
 Congratulations! You've got Discourse installed and running!
+
+## Administrator account
 
 Now make yourself an administrator account. Browse to your discourse instance
 and create an account by logging in normally, then run the commands:
 
     # Run these commands as the discourse user
-    cd ~/discourse
+    cd /var/www/discourse
     RAILS_ENV=production bundle exec rails c
 
+    # Administratorize yourself:
     # (in rails console)
     > me = User.find_by_username_or_email('myemailaddress@me.com')
-    > me.activate #use this in case you haven't configured your mail server and therefore can't receive the activation mail.
+    > me.activate # use this in case you haven't configured your mail server and therefore can't receive the activation mail.
     > me.admin = true
     > me.save
+
+    # Mark yourself as the 'system user':
+    # (in rails console)
+    > SiteSetting.site_contact_username = me.username
 
 At this point we recommend you start going through the various items in the
 [Discourse Admin Quick Start Guide](https://github.com/discourse/discourse/wiki/The-Discourse-Admin-Quick-Start-Guide)
@@ -340,11 +303,11 @@ to further prepare your site for users.
 
 Custom assets such as images should be placed somewhere under:
 
-    DISCOURSE_HOME/public/
+    /var/www/discourse/public/
 
 For example, create a `local` directory and place it into:
 
-    DISCOURSE_HOME/public/uploads/local/michael.png
+    /var/www/discourse/public/uploads/local/michael.png
 
 The corresponding site setting is:
 
@@ -354,16 +317,80 @@ The corresponding site setting is:
 
     # Run these commands as the discourse user
     bluepill stop
-    # Pull down the latest release
-    cd ~/discourse
+    bluepill quit
+    # Back up your install
+    DATESTAMP=$(TZ=UTC date +%F-%T)
+    pg_dump --no-owner --clean discourse_prod | gzip -c > ~/discourse-db-$DATESTAMP.sql.gz
+    tar cfz ~/discourse-dir-$DATESTAMP.tar.gz -C /var/www discourse
+    # get the latest Discourse code
+    cd /var/www/discourse
     git checkout master
     git pull
     git fetch --tags
-    # To run on the latest version instead of bleeding-edge:
+    # To run on the latest numbered release instead of bleeding-edge:
     #git checkout latest-release
+    #
+    # Follow the section below titled:
+    # "Check sample configuration files for new settings"
+    #
     bundle install --without test --deployment
     RUBY_GC_MALLOC_LIMIT=90000000 RAILS_ENV=production rake db:migrate
     RUBY_GC_MALLOC_LIMIT=90000000 RAILS_ENV=production rake assets:precompile
-    bluepill start
+    # restart bluepill
+    crontab -l
+    # Here, run the command to start bluepill.
+    # Get it from the crontab output above.
 
-Note that if bluepill *itself* needs to be restarted, it must be killed with `bluepill quit` and restarted with the same command that's in crontab
+### Check sample configuration files for new settings
+
+Check the sample configuration files provided in the repo with the ones being used for additional recommended settings and merge those in:
+
+    # Run these commands as the discourse user
+    cd /var/www/discourse
+    diff -u config/discourse.pill.sample config/discourse.pill
+    diff -u config/nginx.sample.conf /etc/nginx/conf.d/discourse.conf
+    diff -u config/environments/production.rb.sample config/environments/production.rb
+
+#### Example 1
+
+    $ diff -u config/discourse.pill.sample config/discourse.pill
+    --- config/discourse.pill.sample  2013-07-15 17:38:06.501507001 +0000
+    +++ config/discourse.pill  2013-07-05 06:38:27.133506896 +0000
+    @@ -46,7 +46,7 @@
+
+       app.working_dir = rails_root
+       sockdir = "#{rails_root}/tmp/sockets"
+    -  File.directory? sockdir or FileUtils.mkdir_p sockdir
+    +  File.directory? sockdir or Dir.mkdir sockdir
+       num_webs.times do |i|
+         app.process("thin-#{i}") do |process|
+
+This change reflects us switching to using `FileUtils.mkdir_p` instead of `Dir.mkdir`.
+
+#### Example 2
+
+    $ diff -u config/nginx.sample.conf /etc/nginx/conf.d/discourse.conf
+    --- config/nginx.sample.conf	2013-07-15 17:38:06.521507000 +0000
+    +++ /etc/nginx/conf.d/discourse.conf	2013-07-15 17:52:46.649507024 +0000
+    @@ -12,17 +12,18 @@
+       gzip_min_length 1000;
+       gzip_types application/json text/css application/x-javascript;
+
+    -  server_name enter.your.web.hostname.here;
+    +  server_name webtier.discourse.org;
+
+       sendfile on;
+
+       keepalive_timeout 65;
+    -  client_max_body_size 2m;
+       location / {
+         root /home/discourse/discourse/public;
+
+This change reflects a change in placeholder information plus (importantly)
+adding the `client_max_body_size 2m;` directive to the nginx configuration.
+This change should also be made to your production file.
+
+## Security
+
+We take security very seriously at Discourse, and all our code is 100% open source and peer reviewed.
+Please read [our security guide](https://github.com/discourse/discourse/blob/master/docs/SECURITY.md) for an overview of security measures in Discourse.

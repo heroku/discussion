@@ -102,7 +102,10 @@ class TopicLink < ActiveRecord::Base
           internal = false
           topic_id = nil
           post_number = nil
-          if parsed.host == Discourse.current_hostname || !parsed.host
+
+          if Discourse.store.has_been_uploaded?(url)
+            internal = Discourse.store.internal?
+          elsif parsed.host == Discourse.current_hostname || !parsed.host
             internal = true
 
             route = Rails.application.routes.recognize_path(parsed.path)

@@ -35,7 +35,7 @@ class Post < ActiveRecord::Base
   validates_with ::Validators::PostValidator
 
   # We can pass several creating options to a post via attributes
-  attr_accessor :image_sizes, :quoted_post_numbers, :no_bump, :invalidate_oneboxes, :cooking_options
+  attr_accessor :image_sizes, :quoted_post_numbers, :no_bump, :invalidate_oneboxes, :cooking_options, :skip_unique_check
 
   SHORT_POST_CHARS = 1200
 
@@ -71,14 +71,19 @@ class Post < ActiveRecord::Base
     "post-#{user_id}:#{raw_hash}"
   end
 
+  def store_unique_post_key
+    if SiteSetting.unique_posts_mins > 0
+      $redis.setex(unique_post_key, SiteSetting.unique_posts_mins.minutes.to_i, "1")
+    end
+  end
+
+  def matches_recent_post?
+    $redis.exists(unique_post_key)
+  end
+
   def raw_hash
     return if raw.blank?
     Digest::SHA1.hexdigest(raw.gsub(/\s+/, ""))
-  end
-
-  def reset_cooked
-    @cooked_document = nil
-    self.cooked = nil
   end
 
   def self.white_listed_image_classes
@@ -86,17 +91,18 @@ class Post < ActiveRecord::Base
   end
 
   def post_analyzer
-    @post_analyzer = PostAnalyzer.new(raw, topic_id)
+    @post_analyzers ||= {}
+    @post_analyzers[raw_hash] ||= PostAnalyzer.new(raw, topic_id)
   end
 
-  %w{raw_mentions linked_hosts image_count link_count raw_links}.each do |attr|
+  %w{raw_mentions linked_hosts image_count attachment_count link_count raw_links}.each do |attr|
     define_method(attr) do
-      PostAnalyzer.new(raw, topic_id).send(attr)
+      post_analyzer.send(attr)
     end
   end
 
   def cook(*args)
-    PostAnalyzer.new(raw, topic_id).cook(*args)
+    post_analyzer.cook(*args)
   end
 
 
@@ -263,12 +269,6 @@ class Post < ActiveRecord::Base
     PostCreator.before_create_tasks(self)
   end
 
-  # TODO: Move some of this into an asynchronous job?
-  # TODO: Move into PostCreator
-  after_create do
-    PostCreator.after_create_tasks(self)
-  end
-
   # This calculates the geometric mean of the post timings and stores it along with
   # each post.
   def self.calculate_avg_time
@@ -300,6 +300,7 @@ class Post < ActiveRecord::Base
   end
 
 
+  # TODO: move to post-analyzer?
   # Determine what posts are quoted by this post
   def extract_quoted_post_numbers
     temp_collector = []
@@ -344,6 +345,21 @@ class Post < ActiveRecord::Base
     private_posts.with_topic_subtype(topic_subtype).where('posts.created_at > ?', since_days_ago.days.ago).group('date(posts.created_at)').order('date(posts.created_at)').count
   end
 
+
+  def reply_history
+    post_ids = Post.exec_sql("WITH RECURSIVE breadcrumb(id, reply_to_post_number) AS (
+                              SELECT p.id, p.reply_to_post_number FROM posts AS p
+                                WHERE p.id = :post_id
+                              UNION
+                                 SELECT p.id, p.reply_to_post_number FROM posts AS p, breadcrumb
+                                   WHERE breadcrumb.reply_to_post_number = p.post_number
+                                     AND p.topic_id = :topic_id
+                            ) SELECT id from breadcrumb ORDER by id", post_id: id, topic_id: topic_id).to_a
+
+    post_ids.map! {|r| r['id'].to_i }.reject! {|post_id| post_id == id}
+    Post.where(id: post_ids).includes(:user, :topic).order(:id).to_a
+  end
+
   private
 
 
@@ -377,7 +393,7 @@ end
 # Table name: posts
 #
 #  id                      :integer          not null, primary key
-#  user_id                 :integer          not null
+#  user_id                 :integer
 #  topic_id                :integer          not null
 #  post_number             :integer          not null
 #  raw                     :text             not null
@@ -413,7 +429,6 @@ end
 #  notify_user_count       :integer          default(0), not null
 #  like_score              :integer          default(0), not null
 #  deleted_by_id           :integer
-#  nuked_user              :boolean          default(FALSE)
 #
 # Indexes
 #

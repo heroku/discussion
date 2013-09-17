@@ -13,50 +13,62 @@ class User < ActiveRecord::Base
   include Roleable
 
   has_many :posts
-  has_many :notifications
-  has_many :topic_users
+  has_many :notifications, dependent: :destroy
+  has_many :topic_users, dependent: :destroy
   has_many :topics
   has_many :user_open_ids, dependent: :destroy
-  has_many :user_actions
-  has_many :post_actions
-  has_many :email_logs
+  has_many :user_actions, dependent: :destroy
+  has_many :post_actions, dependent: :destroy
+  has_many :email_logs, dependent: :destroy
   has_many :post_timings
-  has_many :topic_allowed_users
+  has_many :topic_allowed_users, dependent: :destroy
   has_many :topics_allowed, through: :topic_allowed_users, source: :topic
-  has_many :email_tokens
+  has_many :email_tokens, dependent: :destroy
   has_many :views
-  has_many :user_visits
-  has_many :invites
-  has_many :topic_links
+  has_many :user_visits, dependent: :destroy
+  has_many :invites, dependent: :destroy
+  has_many :topic_links, dependent: :destroy
+  has_many :uploads, dependent: :destroy
 
   has_one :facebook_user_info, dependent: :destroy
   has_one :heroku_user_info, dependent: :destroy
   has_one :twitter_user_info, dependent: :destroy
   has_one :github_user_info, dependent: :destroy
   has_one :cas_user_info, dependent: :destroy
+  has_one :oauth2_user_info, dependent: :destroy
+  has_one :user_stat, dependent: :destroy
   belongs_to :approved_by, class_name: 'User'
 
-  has_many :group_users
+  has_many :group_users, dependent: :destroy
   has_many :groups, through: :group_users
   has_many :secure_categories, through: :groups, source: :categories
 
-  has_one :user_search_data
+  has_one :user_search_data, dependent: :destroy
+
+  belongs_to :uploaded_avatar, class_name: 'Upload', dependent: :destroy
 
   validates_presence_of :username
-  validates_presence_of :email
-  validates_uniqueness_of :email
   validate :username_validator
-  validate :email_validator, if: :email_changed?
+  validates :email, presence: true, uniqueness: true
+  validates :email, email: true, if: :email_changed?
   validate :password_validator
 
   before_save :cook
   before_save :update_username_lower
   before_save :ensure_password_is_hashed
   after_initialize :add_trust_level
+  after_initialize :set_default_email_digest
 
   after_save :update_tracked_topics
 
   after_create :create_email_token
+  after_create :create_user_stat
+
+  before_destroy do
+    # These tables don't have primary keys, so destroying them with activerecord is tricky:
+    PostTiming.delete_all(user_id: self.id)
+    View.delete_all(user_id: self.id)
+  end
 
   # Whether we need to be sending a system message after creation
   attr_accessor :send_welcome_message
@@ -66,6 +78,9 @@ class User < ActiveRecord::Base
 
   scope :blocked, -> { where(blocked: true) } # no index
   scope :banned, -> { where('banned_till IS NOT NULL AND banned_till > ?', Time.zone.now) } # no index
+  scope :not_banned, -> { where('banned_till IS NULL') }
+  # excluding fake users like the community user
+  scope :real, -> { where('id > 0') }
 
   module NewTopicDuration
     ALWAYS = -1
@@ -92,23 +107,6 @@ class User < ActiveRecord::Base
     user
   end
 
-  def self.create_for_email(email, opts={})
-    username = UserNameSuggester.suggest(email)
-
-    discourse_hub_nickname_operation do
-      match, available, suggestion = DiscourseHub.nickname_match?(username, email)
-      username = suggestion unless match || available
-    end
-
-    user = User.new(email: email, username: username, name: username)
-    user.trust_level = opts[:trust_level] if opts[:trust_level].present?
-    user.save!
-
-    discourse_hub_nickname_operation { DiscourseHub.register_nickname(username, email) }
-
-    user
-  end
-
   def self.suggest_name(email)
     return "" unless email
     name = email.split(/[@\+]/)[0]
@@ -125,23 +123,18 @@ class User < ActiveRecord::Base
   end
 
   def self.find_by_username_or_email(username_or_email)
-    lower_user = username_or_email.downcase
-    lower_email = Email.downcase(username_or_email)
-
-    users =
-      if username_or_email.include?('@')
-        User.where(email: lower_email)
-      else
-        User.where(username_lower: lower_user)
-      end
-        .to_a
-
-    if users.count > 1
-      raise Discourse::TooManyMatches
-    elsif users.count == 1
-      users[0]
+    conditions = if username_or_email.include?('@')
+      { email: Email.downcase(username_or_email) }
     else
-      nil
+      { username_lower: username_or_email.downcase }
+    end
+
+    users = User.where(conditions).to_a
+
+    if users.size > 1
+      raise Discourse::TooManyMatches
+    else
+      users.first
     end
   end
 
@@ -155,7 +148,7 @@ class User < ActiveRecord::Base
     self.username = new_username
 
     if current_username.downcase != new_username.downcase && valid?
-      User.discourse_hub_nickname_operation { DiscourseHub.change_nickname(current_username, new_username) }
+      DiscourseHub.nickname_operation { DiscourseHub.change_nickname(current_username, new_username) }
     end
 
     save
@@ -168,6 +161,9 @@ class User < ActiveRecord::Base
     key
   end
 
+  def created_topic_count
+    topics.count
+  end
 
   # tricky, we need our bus to be subscribed from the right spot
   def sync_notification_channel_position
@@ -222,7 +218,8 @@ class User < ActiveRecord::Base
   end
 
   def saw_notification_id(notification_id)
-    User.where(["seen_notification_id < ?", notification_id]).update_all ["seen_notification_id = ?", notification_id]
+    User.where(["id = ? and seen_notification_id < ?", id, notification_id])
+        .update_all ["seen_notification_id = ?", notification_id]
   end
 
   def publish_notifications_state
@@ -295,45 +292,63 @@ class User < ActiveRecord::Base
     end
   end
 
-  def self.avatar_template(email)
+  def self.gravatar_template(email)
     email_hash = self.email_hash(email)
-    # robohash was possibly causing caching issues
-    # robohash = CGI.escape("http://robohash.org/size_") << "{size}x{size}" << CGI.escape("/#{email_hash}.png")
-    "https://www.gravatar.com/avatar/#{email_hash}.png?s={size}&r=pg&d=identicon"
+    "//www.gravatar.com/avatar/#{email_hash}.png?s={size}&r=pg&d=identicon"
   end
 
   # Don't pass this up to the client - it's meant for server side use
-  # The only spot this is now used is for self oneboxes in open graph data
+  # This is used in
+  #   - self oneboxes in open graph data
+  #   - emails
   def small_avatar_url
-    "https://www.gravatar.com/avatar/#{email_hash}.png?s=60&r=pg&d=identicon"
+    template = avatar_template
+    template.gsub("{size}", "45")
   end
 
-  # return null for local avatars, a template for gravatar
+  # the avatars might take a while to generate
+  # so return the url of the original image in the meantime
+  def uploaded_avatar_path
+    return unless SiteSetting.allow_uploaded_avatars? && use_uploaded_avatar
+    uploaded_avatar_template.present? ? uploaded_avatar_template : uploaded_avatar.try(:url)
+  end
+
   def avatar_template
-    User.avatar_template(email)
+    uploaded_avatar_path || User.gravatar_template(email)
   end
-
 
   # Updates the denormalized view counts for all users
   def self.update_view_counts
+
+    # NOTE: we only update the counts for users we have seen in the last hour
+    #  this avoids a very expensive query that may run on the entire user base
+    #  we also ensure we only touch the table if data changes
+
     # Update denormalized topics_entered
-    exec_sql "UPDATE users SET topics_entered = x.c
+    exec_sql "UPDATE users SET topics_entered = X.c
              FROM
             (SELECT v.user_id,
                     COUNT(DISTINCT parent_id) AS c
              FROM views AS v
              WHERE parent_type = 'Topic'
              GROUP BY v.user_id) AS X
-            WHERE x.user_id = users.id"
+            WHERE
+                    X.user_id = users.id AND
+                    X.c <> topics_entered AND
+                    users.last_seen_at > :seen_at
+    ", seen_at: 1.hour.ago
 
     # Update denormalzied posts_read_count
-    exec_sql "UPDATE users SET posts_read_count = x.c
+    exec_sql "UPDATE users SET posts_read_count = X.c
               FROM
               (SELECT pt.user_id,
                       COUNT(*) AS c
                FROM post_timings AS pt
                GROUP BY pt.user_id) AS X
-               WHERE x.user_id = users.id"
+               WHERE X.user_id = users.id AND
+                     X.c <> posts_read_count AND
+                     users.last_seen_at > :seen_at
+    ", seen_at: 1.hour.ago
   end
 
   # The following count methods are somewhat slow - definitely don't use them in a loop.
@@ -469,10 +484,6 @@ class User < ActiveRecord::Base
     where('created_at > ?', sinceDaysAgo.days.ago).group('date(created_at)').order('date(created_at)').count
   end
 
-  def self.counts_by_trust_level
-    group('trust_level').count
-  end
-
   def update_topic_reply_count
     self.topic_reply_count =
         Topic
@@ -487,13 +498,14 @@ class User < ActiveRecord::Base
   end
 
   def secure_category_ids
-    cats = self.staff? ? Category.select(:id).where(read_restricted: true) : secure_categories.select('categories.id')
-    cats.map { |c| c.id }.sort
+    cats = self.staff? ? Category.where(read_restricted: true) : secure_categories.references(:categories)
+    cats.pluck('categories.id').sort
   end
 
   def topic_create_allowed_category_ids
     Category.topic_create_allowed(self.id).select(:id)
   end
+
 
   # Flag all posts from a user as spam
   def flag_linked_posts_as_spam
@@ -507,6 +519,9 @@ class User < ActiveRecord::Base
     end
   end
 
+  def has_uploaded_avatar
+    uploaded_avatar.present?
+  end
 
   protected
 
@@ -530,6 +545,11 @@ class User < ActiveRecord::Base
     end
   end
 
+  def create_user_stat
+    stat = UserStat.new
+    stat.user_id = self.id
+    stat.save!
+  end
 
   def create_email_token
     email_tokens.create(email: email)
@@ -543,7 +563,7 @@ class User < ActiveRecord::Base
   end
 
   def hash_password(password, salt)
-    Pbkdf2.hash_password(password, salt, Rails.configuration.pbkdf2_iterations)
+    Pbkdf2.hash_password(password, salt, Rails.configuration.pbkdf2_iterations, Rails.configuration.pbkdf2_algorithm)
   end
 
   def add_trust_level
@@ -566,51 +586,33 @@ class User < ActiveRecord::Base
     end
   end
 
-  def email_validator
-    if (setting = SiteSetting.email_domains_whitelist).present?
-      unless email_in_restriction_setting?(setting)
-        errors.add(:email, I18n.t(:'user.email.not_allowed'))
-      end
-    elsif (setting = SiteSetting.email_domains_blacklist).present?
-      if email_in_restriction_setting?(setting)
-        errors.add(:email, I18n.t(:'user.email.not_allowed'))
-      end
-    end
-  end
-
-  def email_in_restriction_setting?(setting)
-    domains = setting.gsub('.', '\.')
-    regexp = Regexp.new("@(#{domains})", true)
-    self.email =~ regexp
-  end
-
   def password_validator
     if (@raw_password && @raw_password.length < 6) || (@password_required && !@raw_password)
       errors.add(:password, "must be 6 letters or longer")
     end
   end
 
-    def send_approval_email
-      Jobs.enqueue(:user_email,
-        type: :signup_after_approval,
-        user_id: id,
-        email_token: email_tokens.first.token
-      )
-    end
+  def send_approval_email
+    Jobs.enqueue(:user_email,
+      type: :signup_after_approval,
+      user_id: id,
+      email_token: email_tokens.first.token
+    )
+  end
 
-  private
-
-  def self.discourse_hub_nickname_operation
-    if SiteSetting.call_discourse_hub?
-      begin
-        yield
-      rescue DiscourseHub::NicknameUnavailable
-        false
-      rescue => e
-        Rails.logger.error e.message + "\n" + e.backtrace.join("\n")
+  def set_default_email_digest
+    if has_attribute?(:email_digests) && self.email_digests.nil?
+      if SiteSetting.default_digest_email_frequency.blank?
+        self.email_digests = false
+      else
+        self.email_digests = true
+        self.digest_after_days ||= SiteSetting.default_digest_email_frequency.to_i if has_attribute?(:digest_after_days)
       end
     end
   end
+
+  private
+
 end
 
 # == Schema Information
@@ -635,7 +637,7 @@ end
 #  website                       :string(255)
 #  admin                         :boolean          default(FALSE), not null
 #  last_emailed_at               :datetime
-#  email_digests                 :boolean          default(TRUE), not null
+#  email_digests                 :boolean          not null
 #  trust_level                   :integer          not null
 #  bio_cooked                    :text
 #  email_private_messages        :boolean          default(TRUE)
@@ -645,7 +647,7 @@ end
 #  approved_at                   :datetime
 #  topics_entered                :integer          default(0), not null
 #  posts_read_count              :integer          default(0), not null
-#  digest_after_days             :integer          default(7), not null
+#  digest_after_days             :integer
 #  previous_visit_at             :datetime
 #  banned_at                     :datetime
 #  banned_till                   :datetime
@@ -666,6 +668,9 @@ end
 #  blocked                       :boolean          default(FALSE)
 #  dynamic_favicon               :boolean          default(FALSE), not null
 #  title                         :string(255)
+#  use_uploaded_avatar           :boolean          default(FALSE)
+#  uploaded_avatar_template      :string(255)
+#  uploaded_avatar_id            :integer
 #
 # Indexes
 #

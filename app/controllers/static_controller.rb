@@ -1,6 +1,7 @@
 class StaticController < ApplicationController
 
   skip_before_filter :check_xhr, :redirect_to_login_if_required
+  skip_before_filter :verify_authenticity_token, only: [:enter]
 
   def show
 
@@ -25,6 +26,10 @@ class StaticController < ApplicationController
     # if we don't have a localized version, try the English one
     if not lookup_context.find_all("#{file}.html").any?
       file = "static/#{page}.en"
+    end
+
+    if not lookup_context.find_all("#{file}.html").any?
+      file = "static/#{page}"
     end
 
     if lookup_context.find_all("#{file}.html").any?

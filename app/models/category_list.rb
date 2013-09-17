@@ -103,7 +103,8 @@ class CategoryList
         @categories.insert(insert_at || @categories.size, uncategorized)
       end
 
-      if @all_topics.present? && uncategorized.present?
+      if uncategorized.present?
+        @all_topics ||= []
         uncategorized.displayable_topics = uncategorized_topics
         @all_topics << uncategorized_topics
         @all_topics.flatten!
@@ -114,7 +115,7 @@ class CategoryList
     def prune_empty
       unless @guardian.can_create?(Category)
         # Remove categories with no featured topics unless we have the ability to edit one
-        @categories.delete_if { |c| c.displayable_topics.blank? }
+        @categories.delete_if { |c| c.displayable_topics.blank? && c.description.nil? }
       end
     end
 

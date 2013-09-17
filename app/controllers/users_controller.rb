@@ -1,12 +1,13 @@
 require_dependency 'discourse_hub'
 require_dependency 'user_name_suggester'
+require_dependency 'user_activator'
 
 class UsersController < ApplicationController
 
-  skip_before_filter :check_xhr, only: [:show, :password_reset, :update, :activate_account, :avatar, :authorize_email, :user_preferences_redirect]
   skip_before_filter :authorize_mini_profiler, only: [:avatar]
+  skip_before_filter :check_xhr, only: [:show, :password_reset, :update, :activate_account, :authorize_email, :user_preferences_redirect, :avatar]
 
-  before_filter :ensure_logged_in, only: [:username, :update, :change_email, :user_preferences_redirect]
+  before_filter :ensure_logged_in, only: [:username, :update, :change_email, :user_preferences_redirect, :upload_avatar, :toggle_avatar]
 
   # we need to allow account creation with bad CSRF tokens, if people are caching, the CSRF token on the
   #  page is going to be empty, this means that server will see an invalid CSRF and blow the session
@@ -75,7 +76,7 @@ class UsersController < ApplicationController
     params.require(:new_username)
 
     user = fetch_user_from_params
-    guardian.ensure_can_edit!(user)
+    guardian.ensure_can_edit_username!(user)
 
     result = user.change_username(params[:new_username])
     raise Discourse::InvalidParameters.new(:new_username) unless result
@@ -99,93 +100,48 @@ class UsersController < ApplicationController
     render json: {valid: r.length == 1}
   end
 
+  def render_available_true
+    render(json: { available: true })
+  end
+
+  def changing_case_of_own_username(target_user, username)
+    target_user and username.downcase == target_user.username.downcase
+  end
+
+  # Used for checking availability of a username and will return suggestions
+  # if the username is not available.
   def check_username
     params.require(:username)
+    username = params[:username]
+
+    target_user = user_from_params_or_current_user
 
     # The special case where someone is changing the case of their own username
-    return render(json: {available: true}) if current_user and params[:username].downcase == current_user.username.downcase
+    return render_available_true if changing_case_of_own_username(target_user, username)
 
-    validator = UsernameValidator.new(params[:username])
-    if !validator.valid_format?
-      render json: {errors: validator.errors}
-    elsif !SiteSetting.call_discourse_hub?
-      if User.username_available?(params[:username])
-        render json: {available: true}
-      else
-        render json: {available: false, suggestion: UserNameSuggester.suggest(params[:username])}
-      end
-    else
-
-      # Contact the Discourse Hub server
-      email_given = (params[:email].present? || current_user.present?)
-      available_locally = User.username_available?(params[:username])
-      global_match = false
-      available_globally, suggestion_from_discourse_hub = begin
-        if email_given
-          global_match, available, suggestion = DiscourseHub.nickname_match?( params[:username], params[:email] || current_user.email )
-          [available || global_match, suggestion]
-        else
-          DiscourseHub.nickname_available?(params[:username])
-        end
-      end
-
-      if available_globally && available_locally
-        render json: {available: true, global_match: (global_match ? true : false)}
-      elsif available_locally && !available_globally
-        if email_given
-          # Nickname and email do not match what's registered on the discourse hub.
-          render json: {available: false, global_match: false, suggestion: suggestion_from_discourse_hub}
-        else
-          # The nickname is available locally, but is registered on the discourse hub.
-          # We need an email to see if the nickname belongs to this person.
-          # Don't give a suggestion until we get the email and try to match it with on the discourse hub.
-          render json: {available: false}
-        end
-      elsif available_globally && !available_locally
-        # Already registered on this site with the matching nickname and email address. Why are you signing up again?
-        render json: {available: false, suggestion: UserNameSuggester.suggest(params[:username])}
-      else
-        # Not available anywhere.
-        render json: {available: false, suggestion: suggestion_from_discourse_hub}
-      end
-
-    end
+    checker = UsernameCheckerService.new
+    email = params[:email] || target_user.try(:email)
+    render(json: checker.check_username(username, email))
   rescue RestClient::Forbidden
     render json: {errors: [I18n.t("discourse_hub.access_token_problem")]}
   end
+
+  def user_from_params_or_current_user
+    params[:for_user_id] ? User.find(params[:for_user_id]) : current_user
+  end
+
 
   def create
     return fake_success_response if suspicious? params
 
     user = User.new_from_params(params)
-
-    auth = session[:authentication]
-    if valid_session_authentication?(auth, params[:email])
-      user.active = true
-    end
-    user.password_required! unless auth
-
-    if user.valid? && SiteSetting.call_discourse_hub?
-      DiscourseHub.register_nickname(user.username, user.email)
-    end
+    auth = authenticate_user(user, params)
+    register_nickname(user)
 
     if user.save
-      if SiteSetting.must_approve_users?
-        message = I18n.t("login.wait_approval")
-      elsif !user.active?
-        message = I18n.t("login.activate_email", email: user.email)
-        Jobs.enqueue(:user_email,
-          type: :signup,
-          user_id: user.id,
-          email_token: user.email_tokens.first.token
-        )
-      else
-        message = I18n.t("login.active")
-        log_on_user(user)
-        user.enqueue_welcome_message('welcome_user')
-      end
-
-      create_third_party_auth_records(user, auth) if auth.present?
+      activator = UserActivator.new(user, session, cookies)
+      message = activator.activation_message
+      create_third_party_auth_records(user, auth)
 
       # Clear authentication session.
       session[:authentication] = nil
@@ -194,45 +150,31 @@ class UsersController < ApplicationController
     else
       render json: {
         success: false,
-        message: I18n.t("login.errors", errors: user.errors.full_messages.join("\n"))
+        message: I18n.t("login.errors", errors: user.errors.full_messages.join("\n")),
+        errors: user.errors.to_hash,
+        values: user.attributes.slice("name", "username", "email")
       }
     end
   rescue ActiveRecord::StatementInvalid
     render json: { success: false, message: I18n.t("login.something_already_taken") }
-  rescue DiscourseHub::NicknameUnavailable
-    render json: { success: false,
-      message: I18n.t(
-        "login.errors",
-        errors:I18n.t(
-          "login.not_available", suggestion: UserNameSuggester.suggest(params[:username])
-        )
-      )
-    }
+  rescue DiscourseHub::NicknameUnavailable=> e
+    render json: e.response_message
   rescue RestClient::Forbidden
     render json: { errors: [I18n.t("discourse_hub.access_token_problem")] }
   end
 
-  def get_honeypot_value
-    render json: {value: honeypot_value, challenge: challenge_value}
+  def authenticate_user(user, params)
+    auth = session[:authentication]
+    if valid_session_authentication?(auth, params[:email])
+      user.active = true
+    end
+    user.password_required! unless auth
+
+    auth
   end
 
-  # all avatars are funneled through here
-  def avatar
-
-    # TEMP to catch all missing spots
-    # raise ActiveRecord::RecordNotFound
-
-    user = User.select(:email).where(username_lower: params[:username].downcase).first
-    if user.present?
-      # for now we only support gravatar in square (redirect cached for a day),
-      # later we can use x-sendfile and/or a cdn to serve local
-      size = determine_avatar_size(params[:size])
-      url = user.avatar_template.gsub("{size}", size.to_s)
-      expires_in 1.day
-      redirect_to url
-    else
-      raise ActiveRecord::RecordNotFound
-    end
+  def get_honeypot_value
+    render json: {value: honeypot_value, challenge: challenge_value}
   end
 
   def password_reset
@@ -263,7 +205,7 @@ class UsersController < ApplicationController
   def change_email
     params.require(:email)
     user = fetch_user_from_params
-    guardian.ensure_can_edit!(user)
+    guardian.ensure_can_edit_email!(user)
     lower_email = Email.downcase(params[:email]).strip
 
     # Raise an error if the email is already in use
@@ -328,8 +270,75 @@ class UsersController < ApplicationController
 
     results = UserSearch.search term, topic_id
 
-    render json: { users: results.as_json(only: [ :username, :name ],
+    render json: { users: results.as_json(only: [ :username, :name, :use_uploaded_avatar, :upload_avatar_template, :uploaded_avatar_id],
                                           methods: :avatar_template) }
+  end
+
+  # [LEGACY] avatars in quotes/oneboxes might still be pointing to this route
+  # fixing it requires a rebake of all the posts
+  def avatar
+    user = User.where(username_lower: params[:username].downcase).first
+    if user.present?
+      size = determine_avatar_size(params[:size])
+      url = user.avatar_template.gsub("{size}", size.to_s)
+      expires_in 1.day
+      redirect_to url
+    else
+      raise ActiveRecord::RecordNotFound
+    end
+  end
+
+  def determine_avatar_size(size)
+    size = size.to_i
+    size = 64 if size == 0
+    size = 10 if size < 10
+    size = 128 if size > 128
+    size
+  end
+
+  def upload_avatar
+    user = fetch_user_from_params
+    guardian.ensure_can_edit!(user)
+
+    file = params[:file] || params[:files].first
+
+    # check the file size (note: this might also be done in the web server)
+    filesize = File.size(file.tempfile)
+    max_size_kb = SiteSetting.max_image_size_kb * 1024
+    return render status: 413, text: I18n.t("upload.images.too_large", max_size_kb: max_size_kb) if filesize > max_size_kb
+
+    upload = Upload.create_for(user.id, file, filesize)
+
+    user.uploaded_avatar_template = nil
+    user.uploaded_avatar = upload
+    user.use_uploaded_avatar = true
+    user.save!
+
+    Jobs.enqueue(:generate_avatars, upload_id: upload.id)
+
+    render json: {
+      url: upload.url,
+      width: upload.width,
+      height: upload.height,
+    }
+
+  rescue FastImage::ImageFetchFailure
+    render status: 422, text: I18n.t("upload.images.fetch_failure")
+  rescue FastImage::UnknownImageType
+    render status: 422, text: I18n.t("upload.images.unknown_image_type")
+  rescue FastImage::SizeNotFound
+    render status: 422, text: I18n.t("upload.images.size_not_found")
+  end
+
+  def toggle_avatar
+    params.require(:use_uploaded_avatar)
+    user = fetch_user_from_params
+    guardian.ensure_can_edit!(user)
+
+    user.use_uploaded_avatar = params[:use_uploaded_avatar]
+    user.save!
+
+    render nothing: true
   end
 
   private
@@ -339,7 +348,13 @@ class UsersController < ApplicationController
     end
 
     def challenge_value
-      '3019774c067cc2b'
+      challenge = $redis.get('SECRET_CHALLENGE')
+      unless challenge && challenge.length == 16*2
+        challenge = SecureRandom.hex(16)
+        $redis.set('SECRET_CHALLENGE',challenge)
+      end
+
+      challenge
     end
 
     def suspicious?(params)
@@ -367,60 +382,23 @@ class UsersController < ApplicationController
 
     def create_third_party_auth_records(user, auth)
 
-      if heroku_auth?(auth)
-        HerokuUserInfo.create(
-          user_id: user.id,
-          screen_name: auth[:heroku_screen_name],
-          heroku_user_id: auth[:heroku_user_id]
-        )
+      # if heroku_auth?(auth)
+      #   HerokuUserInfo.create(
+      #     user_id: user.id,
+      #     screen_name: auth[:heroku_screen_name],
+      #     heroku_user_id: auth[:heroku_user_id]
+      #   )
+      # end
+
+      return unless auth && auth[:authenticator_name]
+
+      authenticator = Users::OmniauthCallbacksController.find_authenticator(auth[:authenticator_name])
+      authenticator.after_create_account(user, auth)
+    end
+
+    def register_nickname(user)
+      if user.valid? && SiteSetting.call_discourse_hub?
+        DiscourseHub.register_nickname(user.username, user.email)
       end
-
-      if twitter_auth?(auth)
-        TwitterUserInfo.create(
-          user_id: user.id,
-          screen_name: auth[:twitter_screen_name],
-          twitter_user_id: auth[:twitter_user_id]
-        )
-      end
-
-      if facebook_auth?(auth)
-        FacebookUserInfo.create!(auth[:facebook].merge(user_id: user.id))
-      end
-
-      if github_auth?(auth)
-        GithubUserInfo.create(
-          user_id: user.id,
-          screen_name: auth[:github_screen_name],
-          github_user_id: auth[:github_user_id]
-        )
-      end
-    end
-
-    def heroku_auth?(auth)
-      auth[:heroku_user_id] && auth[:heroku_screen_name] &&
-      HerokuUserInfo.find_by_heroku_user_id(auth[:heroku_user_id]).nil?
-    end
-
-    def twitter_auth?(auth)
-      auth[:twitter_user_id] && auth[:twitter_screen_name] &&
-      TwitterUserInfo.find_by_twitter_user_id(auth[:twitter_user_id]).nil?
-    end
-
-    def facebook_auth?(auth)
-      auth[:facebook].present? &&
-      FacebookUserInfo.find_by_facebook_user_id(auth[:facebook][:facebook_user_id]).nil?
-    end
-
-    def github_auth?(auth)
-      auth[:github_user_id] && auth[:github_screen_name] &&
-      GithubUserInfo.find_by_github_user_id(auth[:github_user_id]).nil?
-    end
-
-    def determine_avatar_size(size)
-      size = size.to_i
-      size = 64 if size == 0
-      size = 10 if size < 10
-      size = 128 if size > 128
-      size
     end
 end

@@ -41,7 +41,7 @@ module Discourse
 
     config.assets.paths += %W(#{config.root}/config/locales)
 
-    config.assets.precompile += ['admin.js', 'admin.css', 'shiny/shiny.css', 'preload_store.js', 'jquery.js']
+    config.assets.precompile += ['common.css', 'desktop.css', 'mobile.css', 'admin.js', 'admin.css', 'shiny/shiny.css', 'preload_store.js']
 
     # Precompile all defer
     Dir.glob("#{config.root}/app/assets/javascripts/defer/*.js").each do |file|
@@ -89,11 +89,12 @@ module Discourse
 
     # per https://www.owasp.org/index.php/Password_Storage_Cheat_Sheet
     config.pbkdf2_iterations = 64000
+    config.pbkdf2_algorithm = "sha256"
 
     # dumping rack lock cause the message bus does not work with it (throw :async, it catches Exception)
     # see: https://github.com/sporkrb/spork/issues/66
     # rake assets:precompile also fails
-    config.threadsafe! unless $PROGRAM_NAME =~ /spork|rake/
+    config.threadsafe! unless rails4? || $PROGRAM_NAME =~ /spork|rake/
 
     # route all exceptions via our router
     config.exceptions_app = self.routes
@@ -112,7 +113,7 @@ module Discourse
     # ember stuff only used for asset precompliation, production variant plays up
     config.ember.variant = :development
     config.ember.ember_location = "#{Rails.root}/app/assets/javascripts/external_production/ember.js"
-    config.ember.handlebars_location = "#{Rails.root}/app/assets/javascripts/external/handlebars-1.0.rc.4.js"
+    config.ember.handlebars_location = "#{Rails.root}/app/assets/javascripts/external/handlebars.js"
 
     # Since we are using strong_parameters, we can disable and remove
     # attr_accessible.
@@ -122,25 +123,29 @@ module Discourse
     # See the initializer and https://github.com/cyu/rack-cors for configuration documentation.
     #
     # Needed for staging and prod - so put here and just disable in environments/development.rb
-    config.enable_rack_cors = true
-    config.rack_cors_origins = [ENV['HOST_NAME']]
-    config.rack_cors_resource = ['*', { :headers => :any, :methods => [:get, :head, :options] }]
+    # config.enable_rack_cors = true
+    # config.rack_cors_origins = [ENV['HOST_NAME']]
+    # config.rack_cors_resource = ['*', { :headers => :any, :methods => [:get, :head, :options] }]
 
     # So open id logs somewhere sane
-    config.after_initialize do
-      OpenID::Util.logger = Rails.logger
-
-      if ENV['EMBED_CLOCKWORK']
-        puts ">> Running clockwork in background thread"
-        require_relative "clock"
-
-        Thread.new do
-          Clockwork.run
-        end
-      end
-
+    require 'plugin'
+    require 'auth'
+    unless Rails.env.test?
+      Discourse.activate_plugins!
     end
 
+    config.after_initialize do
+      # So open id logs somewhere sane
+      OpenID::Util.logger = Rails.logger
+      if plugins = Discourse.plugins
+        plugins.each{|plugin| plugin.notify_after_initialize}
+      end
+    end
+
+    # This is not really required per-se, but we do not want to support
+    # XML params, we see errors in our logs about malformed XML and there
+    # absolutly no spot in our app were we use XML as opposed to JSON endpoints
+    ActionDispatch::ParamsParser::DEFAULT_PARSERS.delete(Mime::XML)
 
   end
 end

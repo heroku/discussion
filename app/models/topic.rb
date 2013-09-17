@@ -10,16 +10,26 @@ class Topic < ActiveRecord::Base
   include ActionView::Helpers::SanitizeHelper
   include RateLimiter::OnCreateRecord
   include Trashable
+  extend Forwardable
+
+  def_delegator :featured_users, :user_ids, :featured_user_ids
+  def_delegator :featured_users, :choose, :feature_topic_users
+
+  def_delegator :notifier, :watch!, :notify_watch!
+  def_delegator :notifier, :tracking!, :notify_tracking!
+  def_delegator :notifier, :regular!, :notify_regular!
+  def_delegator :notifier, :muted!, :notify_muted!
+  def_delegator :notifier, :toggle_mute, :toggle_mute
 
   def self.max_sort_order
     2**31 - 1
   end
 
-  def self.featured_users_count
-    4
-  end
-
   versioned if: :new_version_required?
+
+  def featured_users
+    @featured_users ||= TopicFeaturedUsers.new(self)
+  end
 
   def trash!(trashed_by=nil)
     update_category_topic_count_by(-1) if deleted_at.nil?
@@ -51,7 +61,9 @@ class Topic < ActiveRecord::Base
     self.title = TextCleaner.clean_title(TextSentinel.title_sentinel(title).text) if errors[:title].empty?
   end
 
-  serialize :meta_data, ActiveRecord::Coders::Hstore
+  unless rails4?
+    serialize :meta_data, ActiveRecord::Coders::Hstore
+  end
 
   belongs_to :category
   has_many :posts
@@ -130,7 +142,6 @@ class Topic < ActiveRecord::Base
 
   after_create do
     changed_to_category(category)
-    notifier.created_topic! user_id
     if archetype == Archetype.private_message
       DraftSequence.next!(user, Draft::NEW_PRIVATE_MESSAGE)
     else
@@ -199,7 +210,7 @@ class Topic < ActiveRecord::Base
       .created_since(since)
       .listable_topics
       .order(:percent_rank)
-      .limit(5)
+      .limit(100)
   end
 
   def update_meta_data(data)
@@ -250,7 +261,6 @@ class Topic < ActiveRecord::Base
          .listable_topics
          .limit(SiteSetting.max_similar_results)
          .order('similarity desc')
-         .all
   end
 
   def update_status(status, enabled, user)
@@ -368,9 +378,6 @@ class Topic < ActiveRecord::Base
     changed_to_category(cat)
   end
 
-  def featured_user_ids
-    [featured_user1_id, featured_user2_id, featured_user3_id, featured_user4_id].uniq.compact
-  end
 
   def remove_allowed_user(username)
     user = User.where(username: username).first
@@ -466,30 +473,6 @@ class Topic < ActiveRecord::Base
     end
   end
 
-  # Chooses which topic users to feature
-  def feature_topic_users(args={})
-    reload
-
-    # Don't include the OP or the last poster
-    to_feature = posts.where('user_id NOT IN (?, ?)', user_id, last_post_user_id)
-
-    # Exclude a given post if supplied (in the case of deletes)
-    to_feature = to_feature.where("id <> ?", args[:except_post_id]) if args[:except_post_id].present?
-
-    # Clear the featured users by default
-    Topic.featured_users_count.times do |i|
-      send("featured_user#{i+1}_id=", nil)
-    end
-
-    # Assign the featured_user{x} columns
-    to_feature = to_feature.group(:user_id).order('count_all desc').limit(Topic.featured_users_count)
-
-    to_feature.count.keys.each_with_index do |user_id, i|
-      send("featured_user#{i+1}_id=", user_id)
-    end
-
-    save
-  end
 
   def posters_summary(options = {})
     @posters_summary ||= TopicPostersSummary.new(self, options).summary
@@ -580,32 +563,10 @@ class Topic < ActiveRecord::Base
     @topic_notifier ||= TopicNotifier.new(self)
   end
 
-  # notification stuff
-  def notify_watch!(user)
-    notifier.watch! user
-  end
-
-  def notify_tracking!(user)
-    notifier.tracking! user
-  end
-
-  def notify_regular!(user)
-    notifier.regular! user
-  end
-
-  def notify_muted!(user)
-    notifier.muted! user
-  end
-
   def muted?(user)
     if user && user.id
       notifier.muted?(user.id)
     end
-  end
-
-  # Enable/disable the mute on the topic
-  def toggle_mute(user_id)
-    notifier.toggle_mute user_id
   end
 
   def auto_close_days=(num_days)
@@ -640,6 +601,7 @@ class Topic < ActiveRecord::Base
         Category.where(['id = ?', category_id]).update_all("topic_count = topic_count " + (num > 0 ? '+' : '') + "#{num}")
       end
     end
+
 end
 
 # == Schema Information
@@ -653,7 +615,7 @@ end
 #  updated_at              :datetime         not null
 #  views                   :integer          default(0), not null
 #  posts_count             :integer          default(0), not null
-#  user_id                 :integer          not null
+#  user_id                 :integer
 #  last_post_user_id       :integer          not null
 #  reply_count             :integer          default(0), not null
 #  featured_user1_id       :integer
