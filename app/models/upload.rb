@@ -2,8 +2,6 @@ require 'digest/sha1'
 require 'image_sizer'
 require 'tempfile'
 require 'pathname'
-require_dependency 's3'
-require_dependency 'local_store'
 
 class Upload < ActiveRecord::Base
   belongs_to :user
@@ -105,4 +103,3 @@ end
 #  index_uploads_on_url      (url)
 #  index_uploads_on_user_id  (user_id)
 #
-
