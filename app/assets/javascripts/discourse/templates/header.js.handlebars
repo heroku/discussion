@@ -84,7 +84,7 @@
         </li>
         <li class='current-user'>
           {{#if currentUser}}
-            {{#linkTo 'userActivity.index' currentUser titleKey="current_user" class="icon"}}{{boundAvatar currentUser imageSize="medium" }}{{/linkTo}}
+            {{#link-to 'userActivity.index' currentUser titleKey="current_user" class="icon"}}{{boundAvatar currentUser imageSize="medium" }}{{/link-to}}
           {{else}}
             <div class="icon not-logged-in-avatar" {{action showLogin}}><i class='icon-user'></i></div>
           {{/if}}
@@ -138,7 +138,7 @@
       {{#if categories}}
         <ul class="category-links">
           <li class='heading' title="{{i18n filters.categories.help}}">
-            {{#linkTo "list.categories"}}{{i18n filters.categories.title}}{{/linkTo}}
+            {{#link-to "list.categories"}}{{i18n filters.categories.title}}{{/link-to}}
           </li>
 
           {{#each categories}}
