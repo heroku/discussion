@@ -66,9 +66,14 @@ class SiteSetting < ActiveRecord::Base
   setting(:flags_required_to_hide_post, 3)
   setting(:cooldown_minutes_after_hiding_posts, 10)
 
+  setting(:max_topics_in_first_day, 5)
+  setting(:max_replies_in_first_day, 10)
+
   setting(:num_flags_to_block_new_user, 3)
   setting(:num_users_to_block_new_user, 3)
   setting(:notify_mods_when_user_blocked, false)
+
+  setting(:flag_sockpuppets, true)
 
   # used mainly for dev, force hostname for Discourse.base_url
   # You would usually use multisite for this
@@ -252,7 +257,7 @@ class SiteSetting < ActiveRecord::Base
   client_setting(:relative_date_duration, 30)
 
   client_setting(:delete_user_max_age, 14)
-  setting(:delete_all_posts_max, 10)
+  setting(:delete_all_posts_max, 15)
 
   setting(:username_change_period, 3) # days
   setting(:email_editable, true)
@@ -260,7 +265,7 @@ class SiteSetting < ActiveRecord::Base
   client_setting(:allow_uploaded_avatars, true)
   client_setting(:allow_animated_avatars, false)
 
-  setting(:detect_custom_avatars, false)
+  setting(:detect_custom_avatars, true)
   setting(:max_daily_gravatar_crawls, 500)
 
   setting(:sequential_replies_threshold, 2)

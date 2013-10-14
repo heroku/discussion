@@ -139,7 +139,7 @@ class UsersController < ApplicationController
     register_nickname(user)
 
     if user.save
-      activator = UserActivator.new(user, session, cookies)
+      activator = UserActivator.new(user, request, session, cookies)
       message = activator.activation_message
       create_third_party_auth_records(user, auth)
 
@@ -302,6 +302,10 @@ class UsersController < ApplicationController
 
     file = params[:file] || params[:files].first
 
+    unless SiteSetting.authorized_image?(file)
+      return render status: 422, text: I18n.t("upload.images.unknown_image_type")
+    end
+
     # check the file size (note: this might also be done in the web server)
     filesize = File.size(file.tempfile)
     max_size_kb = SiteSetting.max_image_size_kb * 1024
@@ -314,7 +318,7 @@ class UsersController < ApplicationController
     user.use_uploaded_avatar = true
     user.save!
 
-    Jobs.enqueue(:generate_avatars, upload_id: upload.id)
+    Jobs.enqueue(:generate_avatars, user_id: user.id, upload_id: upload.id)
 
     render json: {
       url: upload.url,

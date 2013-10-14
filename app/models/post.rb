@@ -6,6 +6,7 @@ require_dependency 'enum'
 require_dependency 'trashable'
 require_dependency 'post_analyzer'
 require_dependency 'validators/post_validator'
+require_dependency 'plugin/filter'
 
 require 'archetype'
 require 'digest/sha1'
@@ -17,6 +18,7 @@ class Post < ActiveRecord::Base
   versioned if: :raw_changed?
 
   rate_limit
+  rate_limit :limit_posts_per_day
 
   belongs_to :user
   belongs_to :topic, counter_cache: :posts_count
@@ -53,6 +55,12 @@ class Post < ActiveRecord::Base
 
   def self.types
     @types ||= Enum.new(:regular, :moderator_action)
+  end
+
+  def limit_posts_per_day
+    if user.created_at > 1.day.ago && post_number > 1
+      RateLimiter.new(user, "first-day-replies-per-day:#{Date.today.to_s}", SiteSetting.max_replies_in_first_day, 1.day.to_i)
+    end
   end
 
   def trash!(trashed_by=nil)
@@ -102,7 +110,7 @@ class Post < ActiveRecord::Base
   end
 
   def cook(*args)
-    post_analyzer.cook(*args)
+    Plugin::Filter.apply(:after_post_cook, self, post_analyzer.cook(*args))
   end
 
 

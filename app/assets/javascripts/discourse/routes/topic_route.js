@@ -13,6 +13,17 @@ Discourse.TopicRoute = Discourse.Route.extend({
   actions: {
     // Modals that can pop up within a topic
 
+    showPosterExpansion: function(post) {
+      this.controllerFor('posterExpansion').show(post);
+    },
+
+    composePrivateMessage: function(user) {
+      var self = this;
+      this.transitionTo('userPrivateMessages', user).then(function () {
+        self.controllerFor('userActivity').send('composePrivateMessage');
+      });
+    },
+
     showFlags: function(post) {
       Discourse.Route.showModal(this, 'flag', post);
       this.controllerFor('flag').setProperties({ selected: null });
@@ -80,9 +91,10 @@ Discourse.TopicRoute = Discourse.Route.extend({
 
     // Clear the search context
     this.controllerFor('search').set('searchContext', null);
+    this.controllerFor('posterExpansion').set('visible', false);
 
-    var topicController = this.controllerFor('topic');
-    var postStream = topicController.get('postStream');
+    var topicController = this.controllerFor('topic'),
+        postStream = topicController.get('postStream');
     postStream.cancelFilter();
 
     topicController.set('multiSelect', false);
@@ -101,6 +113,13 @@ Discourse.TopicRoute = Discourse.Route.extend({
   },
 
   setupController: function(controller, model) {
+    if (Discourse.Mobile.mobileView) {
+      // close the dropdowns on mobile
+      $('.d-dropdown').hide();
+      $('header ul.icons li').removeClass('active');
+      $('[data-toggle="dropdown"]').parent().removeClass('open');
+    }
+
     controller.setProperties({
       model: model,
       editingTopic: false

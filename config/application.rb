@@ -97,6 +97,10 @@ module Discourse
     # rake assets:precompile also fails
     config.threadsafe! unless rails4? || $PROGRAM_NAME =~ /spork|rake/
 
+    # rack lock is nothing but trouble, get rid of it
+    # for some reason still seeing it in Rails 4
+    config.middleware.delete Rack::Lock
+
     # route all exceptions via our router
     config.exceptions_app = self.routes
 
@@ -119,16 +123,7 @@ module Discourse
     # Since we are using strong_parameters, we can disable and remove
     # attr_accessible.
     config.active_record.whitelist_attributes = false
-
-    # allows Cross-origin resource sharing (CORS) for API access in JavaScript (default to false for security).
-    # See the initializer and https://github.com/cyu/rack-cors for configuration documentation.
-    #
-    # Needed for staging and prod - so put here and just disable in environments/development.rb
-    # config.enable_rack_cors = true
-    # config.rack_cors_origins = [ENV['HOST_NAME']]
-    # config.rack_cors_resource = ['*', { :headers => :any, :methods => [:get, :head, :options] }]
-
-    # So open id logs somewhere sane
+    
     require 'plugin'
     require 'auth'
     unless Rails.env.test?

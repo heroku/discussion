@@ -76,6 +76,8 @@ class PostCreator
                            { user: @user,
                              limit_once_per: 24.hours,
                              message_params: {domains: @post.linked_hosts.keys.join(', ')} } )
+    else
+      SpamRulesEnforcer.enforce!(@post)
     end
 
     enqueue_jobs
@@ -232,7 +234,8 @@ class PostCreator
   def update_user_counts
     # We don't count replies to your own topics
     if @user.id != @topic.user_id
-      @user.update_topic_reply_count
+      @user.user_stat.update_topic_reply_count
+      @user.user_stat.save!
     end
 
     @user.last_posted_at = @post.created_at

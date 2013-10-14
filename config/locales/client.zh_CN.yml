@@ -184,7 +184,8 @@ zh_CN:
 
     user:
       said: "{{username}} 说："
-      profile: "介绍信息"
+      profile: "个人简介"
+      show_profile: "访问个人简介"
       mute: "防打扰"
       edit: "修改参数"
       download_archive: "下载我的帖子的存档"
@@ -284,6 +285,7 @@ zh_CN:
 
       email_direct: "当有人引用你、回复你或提及你 @username 时发送一封邮件给你"
       email_private_messages: "当有人给你发私信时发送一封邮件给你"
+      email_always: "即使在论坛中是活跃状态也接收电子邮件提醒和摘要"
 
       other_settings: "其它"
 
@@ -371,6 +373,7 @@ zh_CN:
     private_message_info:
       title: "私下交流"
       invite: "邀请其他人……"
+      remove_allowed_user: "是否将{{name}}从本条私信中移除？"
 
     email: '电子邮箱'
     username: '用户名'
@@ -519,18 +522,12 @@ zh_CN:
       title_with_attachments: "上传图片或文件"
       from_my_computer: "来自我的设备"
       from_the_web: "来自网络"
-      add_title: "添加图片"
-      add_title_with_attachments: "添加图片或文件"
-      remote_title: "网络图片"
-      remote_title_with_attachments: "网络图片或文件"
       remote_tip: "输入图片的网址，格式为：http://example.com/image.jpg"
       remote_tip_with_attachments: "输入图片或文件的网址，格式为：http://example.com/file.ext （支持的格式： {{authorized_extensions}}）。"
-      local_title: "本地图片"
-      local_title_with_attachments: "本地图片或文件"
       local_tip: "点击从你的设备中选择一张图片。"
       local_tip_with_attachments: "点击从你的设备中选择图片或文件（支持的格式： {{authorized_extensions}}）。"
-      upload_title: "上传"
-      upload_title_with_attachments: "上传图片或文件"
+      hint: "（你也可以通过拖放至编辑器的方式来上传）" 
+      hint_for_chrome: "（你也可以通过拖放或复制粘帖至编辑器的方式来上传）"
       uploading: "上传图片中"
 
     search:
@@ -579,6 +576,7 @@ zh_CN:
       title: 主题排名详细
 
     topic:
+      filter_to: "只显示本主题中由{{username}}发表的{{post_count}}个帖子"
       create_in: '创建一个 {{categoryName}} 分类的主题'
       create: '创建主题'
       create_long: '创建一个新主题'
@@ -929,6 +927,7 @@ zh_CN:
     category:
       can: '能够'
       none: '（未分类）'
+      choose: '选择分类……'
       edit: '编辑'
       edit_long: "编辑分类"
       edit_uncategorized: "编辑未分类的"
@@ -1166,6 +1165,8 @@ zh_CN:
         long_title: "站点定制"
         header: "头部"
         css: "层叠样式表（CSS）"
+        mobile_header: "移动版Header"
+        mobile_css: "移动版样式表"
         override_default: "覆盖缺省值？"
         enabled: "启用？"
         preview: "预览"

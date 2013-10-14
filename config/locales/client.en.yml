@@ -185,6 +185,7 @@ en:
     user:
       said: "{{username}} said:"
       profile: "Profile"
+      show_profile: "Visit Profile"
       mute: "Mute"
       edit: "Edit Preferences"
       download_archive: "download archive of my posts"
@@ -372,6 +373,7 @@ en:
     private_message_info:
       title: "Private Message"
       invite: "Invite Others..."
+      remove_allowed_user: "Do you really want to remove {{name}} from this private message?"
 
     email: 'Email'
     username: 'Username'
@@ -516,22 +518,16 @@ en:
       total_flagged: "total flagged posts"
 
     upload_selector:
-      title: "Upload an image"
-      title_with_attachments: "Upload an image or a file"
-      from_my_computer: "From My Device"
-      from_the_web: "From The Web"
-      add_title: "Add image"
-      add_title_with_attachments: "Add image or file"
-      remote_title: "remote image"
-      remote_title_with_attachments: "remote image or file"
+      title: "Add an image"
+      title_with_attachments: "Add an image or a file"
+      from_my_computer: "From my device"
+      from_the_web: "From the web"
       remote_tip: "enter address of an image in the form http://example.com/image.jpg"
       remote_tip_with_attachments: "enter address of an image or a file in the form http://example.com/file.ext (allowed extensions: {{authorized_extensions}})."
-      local_title: "local image"
-      local_title_with_attachments: "local image or file"
       local_tip: "click to select an image from your device"
       local_tip_with_attachments: "click to select an image or a file from your device (allowed extensions: {{authorized_extensions}})"
-      upload_title: "Upload image"
-      upload_title_with_attachments: "Upload image or file"
+      hint: "(you can also drag & drop into the editor to upload them)"
+      hint_for_chrome: "(you can also drag and drop or paste images into the editor to upload them)"
       uploading: "Uploading"
 
     search:
@@ -580,6 +576,7 @@ en:
       title: Topic Rank Details
 
     topic:
+      filter_to: "Show only the {{post_count}} posts by {{username}} in this topic"
       create_in: 'Create {{categoryName}} Topic'
       create: 'Create Topic'
       create_long: 'Create a new Topic'
@@ -930,6 +927,7 @@ en:
     category:
       can: 'can&hellip; '
       none: '(no category)'
+      choose: 'Select a category&hellip;'
       edit: 'edit'
       edit_long: "Edit Category"
       edit_uncategorized: "Edit Uncategorized"

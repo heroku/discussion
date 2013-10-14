@@ -284,7 +284,7 @@ en:
       long_form: 'flagged this as spam'
     inappropriate:
       title: 'Inappropriate'
-      description: 'This post contains content that a reasonable person would consider offensive, abusive, or hate speech.'
+      description: 'This post contains content that a reasonable person would consider offensive, abusive, or a violation of <a href="/faq">our community guidelines</a>.'
       long_form: 'flagged this as inappropriate'
     notify_user:
       title: 'Notify {{username}}'
@@ -530,9 +530,14 @@ en:
 
     flags_required_to_hide_post: "Number of flags that cause a post to be automatically hidden and PM sent to the user (0 for never)"
     cooldown_minutes_after_hiding_posts: "Number of minutes a user must wait before they can edit a post hidden via flagging"
+
+    max_topics_in_first_day: "The maximum number of topics a user is alowed to create in thier first day on the site"
+    max_replies_in_first_day: "The maximum number of replies a user is alowed to create in thier first day on the site"
+
     num_flags_to_block_new_user: "If a new user's posts get this many spam flags from (n) different users, hide all their posts and prevent future posting. 0 disables this feature."
     num_users_to_block_new_user: "If a new user's posts get (x) spam flags from this many different users, hide all their posts and prevent future posting. 0 disables this feature."
     notify_mods_when_user_blocked: "If a user is automatically blocked, send a message to all moderators."
+    flag_sockpuppets: "If a new user (i.e., registered in the last 24 hours) who started a topic and a new user who replies in that topic are at the same IP address, both their posts will automatically be flagged as spam."
 
     traditional_markdown_linebreaks: "Use traditional linebreaks in Markdown, which require two trailing spaces for a linebreak"
     post_undo_action_window_mins: "Number of seconds users are allowed to reverse actions on a post (like, flag, etc)"
@@ -977,9 +982,9 @@ en:
         This threshold can be changed via the `block_new_user` site settings.
 
     spam_post_blocked:
-      subject_template: "New user %{username} blocked for repeated links"
+      subject_template: "New user %{username} posts blocked for repeated links"
       text_body_template: |
-        This is an automated message to inform you that the new user [%{username}](%{base_url}%{user_url}) tried to create multiple posts with links to %{domains}, but they were blocked from further posting to avoid spam.
+        This is an automated message to inform you that the new user [%{username}](%{base_url}%{user_url}) tried to create multiple posts with links to %{domains}, but those posts were blocked to avoid spam. The user is still able to create new posts that do not link to %{domains}.
 
         Please [review the user](%{base_url}%{user_url}).
 

@@ -2,7 +2,7 @@
   {{#if hasAtLeastOneLoginButton}}
     <div id="login-buttons">
       {{#each Discourse.LoginMethod.all}}
-        <button class="btn btn-social {{unbound name}}" {{action externalLogin this}}>{{title}}</button>
+        <button class="btn btn-social {{unbound name}}" {{action externalLogin this}}>{{unbound title}}</button>
       {{/each}}
     </div>
   {{/if}}

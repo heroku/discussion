@@ -966,11 +966,17 @@ describe UsersController do
         response.status.should eq 413
       end
 
+      it 'rejects unauthorized images' do
+        SiteSetting.stubs(:authorized_image?).returns(false)
+        xhr :post, :upload_avatar, username: user.username, file: avatar
+        response.status.should eq 422
+      end
+
       it 'is successful' do
         upload = Fabricate(:upload)
         Upload.expects(:create_for).returns(upload)
         # enqueues the avatar generator job
-        Jobs.expects(:enqueue).with(:generate_avatars, { upload_id: upload.id })
+        Jobs.expects(:enqueue).with(:generate_avatars, { user_id: user.id, upload_id: upload.id })
         xhr :post, :upload_avatar, username: user.username, file: avatar
         user.reload
         # erase the previous template

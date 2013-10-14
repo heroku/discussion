@@ -63,34 +63,31 @@ Spork.prefork do
       end
     end
 
+    class TestCurrentUserProvider < Auth::DefaultCurrentUserProvider
+      def log_on_user(user,session,cookies)
+        session[:current_user_id] = user.id
+        super
+      end
+
+      def log_off_user(session,cookies)
+        session[:current_user_id] = nil
+        super
+      end
+    end
+
     config.before(:all) do
       DiscoursePluginRegistry.clear
+      Discourse.current_user_provider = TestCurrentUserProvider
+
       require_dependency 'site_settings/local_process_provider'
       SiteSetting.provider = SiteSettings::LocalProcessProvider.new
     end
 
   end
 
-  class DateTime
-    class << self
-      alias_method :old_now, :now
-      def now
-        @now || old_now
-      end
-      def now=(v)
-        @now = v
-      end
-    end
-  end
-
-  def freeze_time(d=nil)
-    begin
-      d ||= DateTime.now
-      DateTime.now = d
-      yield
-    ensure
-      DateTime.now = nil
-    end
+  def freeze_time(now=Time.now)
+    DateTime.stubs(:now).returns(DateTime.parse(now.to_s))
+    Time.stubs(:now).returns(Time.parse(now.to_s))
   end
 
 end
