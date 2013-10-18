@@ -12,7 +12,8 @@ class HerokuSessionController < ApplicationController
   def create
     oauth_token = request.env["omniauth.auth"]['credentials']['token']
     heroku_session.create(oauth_token)
-    redirect_to session.delete(:back_to) || '/'
+    next_url = session.delete(:back_to) || '/'
+    redirect_to "#{next_url}?#{Time.now.to_i}" # Force reload
   end
 
   def destroy

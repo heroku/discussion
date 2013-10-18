@@ -10,7 +10,7 @@ class Auth::HerokuUserProvider < Auth::DefaultCurrentUserProvider
   end
 
   def logging_in?(request)
-    request.path.to_s.starts_with?('/auth')
+    request.path.to_s.starts_with?('/auth') || request.referer.to_s == ('/auth/heroku/callback')
   end
 
 end
