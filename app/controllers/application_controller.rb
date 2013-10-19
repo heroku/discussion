@@ -13,7 +13,7 @@ class ApplicationController < ActionController::Base
 
   protect_from_forgery
 
-  before_filter :sync_heroku_session, if: lambda{ |c| Rails.env.production? && request.format && !request.format.json? }
+  before_filter :sync_heroku_session, if: lambda{ |c| request.format && !request.format.json? }
 
   # Default Rails 3.2 lets the request through with a blank session
   #  we are being more pedantic here and nulling session / current_user
