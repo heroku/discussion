@@ -21,6 +21,8 @@
 1. Create Heroku OAuth client: heroku clients:create discussion-yourname https://yourapp.herokuapp.com/auth/heroku/callback
 1. Store OAuth credentials as config vars: heroku config:set HEROKU_OAUTH_ID=12345 HEROKU_OAUTH_SECRET=abc123acb
 
+See HEROKU-LOCAL-OAUTH if you want to use heroku.com's OAuth locally.
+
 ### Deploy
 
 1. git push heroku master
